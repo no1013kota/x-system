@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.92 |
-| 更新日 | 2026-09-05 |
+| バージョン | v1.93 |
+| 更新日 | 2026-09-06 |
 | 関連 | PRD A/L/N/P/S/K/M/O |
 
 ## 1. 共通ルール
@@ -80,7 +80,7 @@
 | `created_at` | `timestamptz` | not null default now() |  |
 | `updated_at` | `timestamptz` | not null default now() |  |
 
-Indexes: `stripe_customer_id`, `stripe_subscription_id`, `active_x_account_id`
+Indexes: `stripe_customer_id`, `stripe_subscription_id`, `active_x_account_id`、**`profiles_signup_source_idx`＝(`signup_source`) where `signup_source <> ''`**（部分索引。`''`＝直接・不明が大半なので、流入元ごとの登録数を数える行だけを持つ・migration `20260904000002`・T-M8-423）
 
 RLS: 本人select可。writeはServer only。
 
@@ -603,6 +603,19 @@ RLS: 所有者はselectのみ。writeはservice roleのみ（取得・upsertはS
 
 Xアカウントを作ると既定6件が**トリガで自動投入される**（`seed_default_post_patterns()`。手順を人の記憶に依存させない・CLAUDE.md 原則3）。削除後に復元することもでき、同名の自作パターンがあるときは`（復元）`を付けて共存させる（既存を黙って上書きしない）。
 
+既定6件の seed 値（`seed_default_post_patterns()`。最新の定義は migration `20260905000002`。**古い版を写すと列が巻き戻る**ので、関数を差し替えるときは直前の定義から変える）:
+
+| seed_key | 名前 | `max_posts`／`max_posts_edit` | `web_search_policy`／`web_search_max_uses` | `source_policy` | `include_news_digest` | `requires_quote_url` |
+|---|---|---|---|---|---|---|
+| `p1` | ニュース解説 | 4／6 | `always`／3 | `always` | false | false |
+| `p2` | 自分の考え・意見 | 1／1 | `always`／3 | `with_url` | false | false |
+| `p3` | ノウハウ・ハウツー | 6／7 | `always`／3 | `with_url` | false | false |
+| `p4` | トレンド便乗 | 2／5 | `always`／3 | `always` | false | false |
+| `p5` | 引用ポスト | 3／3 | `always`／3 | `never` | false | true |
+| `p6` | 週次まとめ | 5／7 | `always`／3 | `always` | true | false |
+
+Web検索は**6種すべて `always`／3**（T-M8-442・運営者の指示 2026-09-05・要決定 D-57。それ以前は P-2＝`with_url`／2・P-5＝`never`／0 だった。「常に」は検索ツールを渡す意味で、使うかどうかはモデルが決める）。既存アカウントの P-2／P-5 行も同 migration が `always`／3 へ書き換える（この2項目は画面から変えられないので、seed 由来の行に利用者が変えた値は無い）。`source_policy` はパターンごとに違い、画面からは変えない（要件06 §3.8）。自作パターンは `always`／3／`with_url`（列の既定と同じ）で作られる。
+
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
 | `id` | `uuid` | PK | |
@@ -612,9 +625,9 @@ Xアカウントを作ると既定6件が**トリガで自動投入される**�
 | `prompt` | `text` | nullable、1〜8000字 | 生成プロンプト。**`null`＝システム既定**（コード定数を使う）で、「既定に戻す」は`null`に戻すこと。既定のままにしておけばコード側のプロンプト改善が既存アカウントへ届く。自作パターンは非null必須 |
 | `max_posts` | `smallint` | not null default 4、1〜8 | **生成時**に作る総ポスト数の上限。**プロンプトの「# 構成と分量とスレッド数」に書かれた `Nスレッド目` から保存時に読む**（T-M8-132）。**読み取れないときの扱いは3段**（T-M8-139）: ①既定パターンでプロンプトを既定へ戻したならその型の既定値（`GENERATION_MAX_POSTS`。P-1=4 等）②それ以外は**今の値を保つ**③新規作成だけ全体の上限（8）。**保存しただけで分量が変わってはいけない**——既定プロンプト（PT_P1〜P6）は「1ポスト目=…」という語彙で `Nスレッド目` を含まないため、以前は既定パターンを保存するたびに8へ跳ね上がり、既定表が1クリックで失われていた。黙って短い値を当てて切り詰めることもしない |
 | `max_posts_edit` | `smallint` | not null default 8、`max_posts`以上8以下 | **編集で許す**ポスト数の上限。日次枠と投稿枠の見積り（最悪ケース）にも使う。既定6種は P-1=6／P-2=1／P-3=7／P-4=5／P-5=3／P-6=7（移行前の`PATTERN_MAX_POSTS`と同じ値）。自作パターンの既定は`min(8, max_posts + 2)`（`PATTERN_MAX_POSTS_LIMIT`＝8・T-M8-130で7から引き上げ） |
-| `web_search_policy` | `text` | not null default `always`、`always`\|`with_url`\|`never` | Web検索を常に使う／入力にURLがあるときだけ使う／使わない。provider のツール設定に加え、`<pattern_rules>`としてプロンプトへも渡る（T-M8-131） |
+| `web_search_policy` | `text` | not null default `always`、`always`\|`with_url`\|`never` | Web検索を常に使う／入力にURLがあるときだけ使う／使わない。provider のツール設定に加え、`<pattern_rules>`としてプロンプトへも渡る（T-M8-131）。既定6種は全て `always`（上の seed 表・T-M8-442）。画面からは変えない |
 | `web_search_max_uses` | `smallint` | not null default 3、0〜5。`never`と0は必ず対応する | Web検索の最大回数。再試行時は1段階ずつ縮小する（プロンプト設計書 §5.2） |
-| `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | **投稿に参考URLを付ける**か（画面の呼称は「参考URL」・T-M8-131）。必ず付ける／入力にURLがあるときだけ／付けない。`<pattern_rules>`としてプロンプトへ渡り、生成後の検証にも使う |
+| `source_policy` | `text` | not null default `with_url`、`always`\|`with_url`\|`never` | **投稿に参考URLを付ける**か（画面の呼称は「参考URL」・T-M8-131）。必ず付ける／入力にURLがあるときだけ／付けない。`<pattern_rules>`としてプロンプトへ渡り、生成後の検証にも使う。既定6種の値はパターンごとに違う（上の seed 表）。画面からは変えない |
 | `include_news_digest` | `boolean` | not null default false | ニュースダイジェストを渡すか |
 | `requires_quote_url` | `boolean` | not null default false | 引用対象のX URLを毎回指定させるか。**trueは予約に使えない**（§3.10）。`include_news_digest`との同時指定は不可 |
 | `placeholders` | `jsonb` | not null default `[]`、10件まで・各要素は`{name}`（1〜20字・`{`/`}`/改行/`<`/`>`不可） | **プロンプト内の `{名前}` に差し込む入力の定義**（T-M8-132）。**プロンプト保存時に本文から自動導出して更新する**（`extractPlaceholderNames`・T-M8-186。宣言と本文を食い違わせない）。画面の入力欄は保存値ではなく表示中の本文から導出する。形の検査は`post_patterns_placeholders_ok()`（CHECKにサブクエリを書けないため関数へ切り出し） |
@@ -777,7 +790,7 @@ RLS: 有効。運営だけが見る表で、`authenticated` へは grant しな�
 
 ### 3.32 `page_views`
 
-**公開ページの閲覧記録**（T-M8-378・運営者の指示 2026-08-30。読むのは `/admin` の入口ファネルと `kpi_snapshot` だけ）。数えるのは**画面遷移**（`sec-fetch-dest: document`。ヘッダを送らない古いブラウザは数える側に倒す）だけで、bot・先読み・運営者自身（proxy が検証したメールが `SUPPORT_EMAIL`）・監視として名乗るスクリプト（UA `exos-monitoring/…`。release／doctor の疎通確認）は数えない（T-M8-422）。ただし**追跡URL（`?src=` が形式に合う）付きの閲覧は運営者自身でも数える**（配ったURLの動作確認のため・T-M8-429）。対象はホーム（`/`）・新規登録（`/signup`）・料金（`/plans`）の3ページのみ。**個人を追わない**——訪問者の識別は「日替わりの塩＋IP＋UA」のHMACハッシュだけを保存し、生のIP・UAは保存しない。Cookieも使わない（塩が日替わりなので日をまたいだ突合は不可能＝ユニークは日次ユニーク）。botとNext.jsの先読み（`next-router-prefetch`）は数えない。書き込みは `after()`（応答後）で行い、画面を待たせない。
+**公開ページの閲覧記録**（T-M8-378・運営者の指示 2026-08-30。読むのは `/admin` の入口ファネルと `kpi_snapshot` だけ）。数えるのは**画面遷移**（`sec-fetch-dest: document` **かつ** `sec-fetch-mode: navigate`。どちらかが違う値で来たら数えない。ヘッダを送らない古いブラウザは数える側に倒す）だけで、bot・先読み・運営者自身（proxy が検証したメールが `SUPPORT_EMAIL`）・監視として名乗るスクリプト（UA `exos-monitoring/…`。release／doctor の疎通確認、`push-auth-templates` の CSP 取得）は数えない（T-M8-422。判定は `src/lib/ops/page-view.ts` の `isCountableRequest`）。ただし**追跡URL（`?src=` が形式に合う）付きの閲覧は運営者自身でも数える**（配ったURLの動作確認のため・T-M8-429）。対象はホーム（`/`）・新規登録（`/signup`）・料金（`/plans`）の3ページのみ。**個人を追わない**——訪問者の識別は「日替わりの塩＋IP＋UA」のHMACハッシュだけを保存し、生のIP・UAは保存しない。Cookieも使わない（塩が日替わりなので日をまたいだ突合は不可能＝ユニークは日次ユニーク）。botとNext.jsの先読み（`next-router-prefetch`）は数えない。書き込みは `after()`（応答後）で行い、画面を待たせない。
 
 | カラム | 型 | 制約/既定値 | 説明 |
 |---|---|---|---|
@@ -1117,3 +1130,4 @@ checkpoint keyは`1`/`7`/`30`だけを許可する。取得できない値は`nu
 | v1.90 | 2026-09-04 | 流入元（T-M8-423）: §3.33 `traffic_sources` を追加、§3.32 `page_views.source`（PKへ追加）、§3.1 `profiles.signup_source` |
 | v1.91 | 2026-09-05 | §3.31 `cancellations` を `cancel_intents`（解約手続きへ進んだ数）へ改名し、実解約は状態指標 `users_canceled`／`users_cancel_scheduled` で持つ（D-55(3)・T-M8-427。既存行は migration で改名し、旧名の取り残しはスナップショットが掃除する） |
 | v1.92 | 2026-09-05 | §3.32 追跡URL付きの閲覧は運営者自身でも数える（T-M8-429） |
+| v1.93 | 2026-09-06 | docs 同期監査（T-M8-446）: §3.23 に既定6種の seed 値表を追加し、Web検索を全パターン `always`／3 へ揃えた変更（T-M8-442・D-57）を反映。§3.1 `profiles_signup_source_idx`（部分索引）、§3.32 の除外規則に `sec-fetch-mode: navigate` と監視UAの例（auth-templates）を追記。スキーマ変更なし |

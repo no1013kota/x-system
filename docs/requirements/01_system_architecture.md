@@ -2,9 +2,9 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.33 |
-| 更新日 | 2026-09-05 |
-| 関連 | PRD A/O、要件 SC-01〜11 |
+| バージョン | v1.34 |
+| 更新日 | 2026-09-06 |
+| 関連 | PRD A/O、要件 SC-01〜12（＋SC-01b） |
 
 ## 1. 全体構成
 
@@ -73,7 +73,7 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | `APP_ENCRYPTION_KEY` | dev/preview/prod | AES-256-GCM暗号化鍵 | 32 bytes相当。ローテーションは将来ADR化 |
 | `X_POSTING_MODE` | dev/preview/prod | `dry_run` / `live` | dev/previewは`dry_run`を必須、prodのみ`live`可 |
 | `FEATURE_QUOTE_POST_ENABLED` | dev/preview/prod | P-5引用ポストの有効化 | 既定値`false`。Server onlyで判定し、初期リリースでは有効化しない |
-| `FEATURE_INVITE_ENABLED` | dev/preview/prod | 友達招待の導線（LPカード・nav・アプリのナビ・ロック画面の案内文）の表示 | 既定値`false`（一時非表示・T-M8-445）。`/app/invite` 本体・`/r/{code}`・報酬処理はこの値に関係なく動く。復活は `true` を足すだけ |
+| `FEATURE_INVITE_ENABLED` | dev/preview/prod | 友達招待の導線（LPカード・nav・アプリのナビ・ロック画面／契約バナーの案内文）の表示 | 既定値`false`（一時非表示・T-M8-445）。`/app/invite` 本体・`/r/{code}`・報酬処理はこの値に関係なく動く。復活は `true` を足すだけ。**読む場所は2つ**: LP・App Shell は `env.ts` 経由、ロック画面と契約バナーの案内文は `src/lib/invite/entry-visibility.ts` が `process.env` を直接読む（`env.ts` は `server-only` で、純粋な lib `subscription-access.ts` からは組めないため。判定は同じ＝リテラル `true` だけ真） |
 | `X_DAILY_POST_LIMIT` | dev/preview/prod | 1 XアカウントあたりのJST日次投稿上限 | 既定値50。スレッド内の各ポストを1件と数える |
 | `X_COST_CONTENT_CREATE_USD` | preview/prod | URLなし投稿作成の原価集計単価 | 公開値0.015。Developer Console確認後に設定 |
 | `X_COST_CONTENT_CREATE_WITH_URL_USD` | preview/prod | URL付き投稿作成の原価集計単価 | 公開値0.200。Developer Console確認後に設定 |
@@ -101,6 +101,7 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | `STRIPE_PRICE_STANDARD_MONTHLY` | dev/preview/prod | スタンダードプラン価格ID | 1,480円/月（キャンペーン適用額。Priceの金額は `plans.ts` の `monthlyPriceJpy` と一致させる） |
 | `STRIPE_PRICE_PREMIUM_MONTHLY` | dev/preview/prod | プレミアムプラン価格ID | 3,980円/月（同上） |
 | `STRIPE_PRICE_EXPERT_MONTHLY` | dev/preview/prod | エキスパートプラン価格ID | 14,800円/月（同上。T-M8-168で STRIPE_PRICE_MD_MONTHLY を置き換え） |
+| `STRIPE_RETENTION_COUPON_ID` | 任意 | 解約手続きの前に提示する引き止めクーポンのID | 未設定なら提示しない。**環境ごとに別のID**。Customer Portal へ `flow_data` で解約画面へ直接入る構成では、Dashboardの「顧客維持クーポン」設定は効かず、ここで明示したものだけが出る（T-M8-272）。設定値の有効性は `doctor` の portal 検査が確かめる |
 
 ### 3.4 X API
 
@@ -119,6 +120,7 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | `GEMINI_API_KEY` | premium運用時 | プレミアム文章生成/画像生成候補 | BYOKではユーザー登録値を使用 |
 | `PREMIUM_TEXT_PROVIDER` | premium運用時 | プレミアム文章生成/分析の既定provider | 既定値`anthropic`。`openai` / `google`への変更は明示設定時のみ |
 | `NEWS_TEXT_PROVIDER` | preview/prod | 共通ニュース取得provider | 既定値`anthropic`。無効時に別providerへ自動切替しない |
+| `NEWS_TEXT_MODEL` | 任意（上書き用） | 共通ニュース取得専用のモデル | 未設定なら `NEWS_TEXT_PROVIDER` に対応するコード側の既定（`DEFAULT_NEWS_TEXT_MODELS`・分析用途と同じ中間クラス）を使う（T-M8-200/337）。プレミアム生成のモデルを変えずにニュースだけ安いモデルへ替えるための値。必須にしない（原則3） |
 | `ANTHROPIC_TEXT_MODEL` | dev/preview/prod | Claude文章モデル | 実装時に公式仕様確認 |
 | `OPENAI_TEXT_MODEL` | dev/preview/prod | OpenAI文章モデル | 実装時に公式仕様確認 |
 | `OPENAI_IMAGE_MODEL` | 任意（上書き用） | OpenAI画像モデル | 未設定なら`DEFAULT_IMAGE_MODELS`（コード）を使う。必須にしない（T-M8-334/370・原則3） |
@@ -144,9 +146,12 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 
 ## 4. ルーティング
 
+画面の一覧と各画面の役割は要件06 §1 を正とする。ここでは認証区分だけを示す。
+
 | 画面ID | パス | 認証 | 備考 |
 |---|---|---|---|
-| SC-01 | `/` | 公開 | LP |
+| SC-01 | `/` | 公開 | LP（新LP。T-M8-420 で `/new` から昇格）。`/new` は `/` へ恒久リダイレクト（共有済みリンクを切らないため） |
+| SC-01b | `/old` | 公開 | 旧LP（noindex・比較用。閲覧計測なし。削除の時期は運営者の判断 D-53） |
 | SC-02 | `/signup` | 公開 | 会員登録 |
 | SC-03 | `/login`, `/reset-password` | 公開 | ログイン/再設定 |
 | SC-04 | `/plans` | 認証必須 | Checkout開始 |
@@ -155,10 +160,17 @@ server adapterは**取得の失敗を「正常な空」へ潰さない**（T-M8-
 | SC-07 | `/app/posts` | 認証必須 | 投稿ハブ |
 | SC-08 | `/app/schedule` | 認証必須 | スケジュール |
 | SC-09 | `/app/analytics` | 認証必須 | 分析 |
-| SC-10 | `/app/ai-settings` | 認証必須 | AI設定 |
-| SC-11 | `/app/settings` | 認証必須 | アカウント設定 |
+| SC-10 | `/app/ai-settings` | 認証必須 | （旧AI設定）**リダイレクト専用**。T-M8-104 で SC-11 へ統合済み。保存済みの通知リンク・ブックマークが届くため残し、旧 `tab` を `/app/prompts?sec=…` の対応区分へ送る |
+| SC-11 | `/app/settings`, `/app/prompts` | 認証必須 | 設定（Xアカウント／APIキー／通知／課金・プラン）と、独立画面のプロンプト（AIモデル設定／アカウント.md／投稿作成プロンプト／画像生成プロンプト） |
+| SC-12 | `/app/invite` | 認証必須 | 友達招待（正本: docs/cp/invite_cp.md）。**プランの登録を要さない唯一の機能**。導線は `FEATURE_INVITE_ENABLED` で一時非表示（§3.1）。本体は直URLで動く |
 
 画面IDを持たない公開補助routeとして`/terms`、`/privacy`、`/legal/commercial-transactions`を用意する。LP、会員登録、プラン選択、アプリ設定のfooterから到達可能にする。
+
+画面IDを持たない認証必須の補助routeとして`/app/consent`（規約改定時の再同意・要件03 §1／要件06 §1.3）を用意する。
+
+`/admin` は**運営者のみ**の運営ダッシュボード（正本: [監視](../operations/monitoring.md)「運営ダッシュボード」）。ログイン済みかつメールが `SUPPORT_EMAIL` と一致する利用者にだけ出し、未ログインは `/login` へ、それ以外の利用者には存在ごと隠す（404）。
+
+`/r/{code}` は招待リンクの着地Route Handler（公開・T-M8-174）。招待コードを30日Cookieへ付けて `/` へリダイレクトするだけで、コードの実在はここでは確かめない（登録時に照合）。
 
 公開コンテンツroute（認証不要・`PublicPageShell` の共通ヘッダ／フッタ）として `/prompt-templates`（プロンプト集・T-M8-173）と `/blog`・`/blog/[slug]`（ブログ・T-M8-184。記事はリポジトリ直下 `blog/*.md` をリクエスト時に読むため、`next.config.ts` の `outputFileTracingIncludes` で同梱する）を用意する。画面仕様は要件06 §1。
 
@@ -259,3 +271,4 @@ session refreshで発行されたcookieは更新後のrequest cookieとして後
 | v1.31 | 2026-08-27 | Exos AIから出るメールの差出人を `support@exosai.net` へ統一（T-M8-339。既定はコード側に持ち、envは差し替え用） |
 | v1.32 | 2026-08-29 | `*_IMAGE_MODEL` を必須から任意（上書き用）へ。既定はコード（`DEFAULT_IMAGE_MODELS`）が持つ決定（T-M8-334）に合わせた。必須のままだったためVercelのbuildが止まり、stg/prdへ反映できなかった（T-M8-370） |
 | v1.33 | 2026-09-05 | 環境変数に `FEATURE_INVITE_ENABLED`（友達招待の導線の一時非表示・T-M8-445） |
+| v1.34 | 2026-09-06 | docs 同期監査（T-M8-446）: §4 ルーティング表を要件06 §1 に揃えた（SC-01b `/old`・`/new` リダイレクト・SC-10 はリダイレクト専用・SC-11 に `/app/prompts`・SC-12 `/app/invite`・`/app/consent`・`/admin`・`/r/{code}`）。§3 に `STRIPE_RETENTION_COUPON_ID`・`NEWS_TEXT_MODEL` を追加し、`FEATURE_INVITE_ENABLED` の読み取り箇所を明記。関連の画面ID範囲を SC-01〜12（＋SC-01b）へ |

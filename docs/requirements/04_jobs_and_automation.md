@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.75 |
-| 更新日 | 2026-09-05 |
+| バージョン | v1.76 |
+| 更新日 | 2026-09-06 |
 | 関連 | PRD N/P/S/K/O、SC-05〜09、[ADR-0002](../decisions/0002-job-dispatch-fanout.md)、[ADR-0003](../decisions/0003-cron-window-claim.md) |
 
 ## 1. 実行モデル
@@ -96,7 +96,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 | 投稿実行 | 200秒 | 60秒 |
 | NEWS（RSS巡回） | 120秒（news_fetch route。フィード十数本のGET＋新着の要約・T-M8-380） | 90秒 |
 
-## 6. 定時トリガー5本
+## 6. 定時トリガー4本
 
 | job | 初期launchd（JST・移行済み） | **production の Vercel Cron（UTC）** | 内容 | 1起動上限 |
 |---|---|---|---|---:|
@@ -105,7 +105,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 | `metrics_collector` | 毎時00分 | `0 * * * *` | dueなtweet_id別checkpoint更新 | 50 accountかつ500 tweet_idまで |
 | `follower_snapshot` | 毎時00分 | `0 * * * *` | JST当日分がないactive Xアカウント（**契約が有効な利用者のみ**・T-M8-257）を日次保存 | 100 accountまで |
 
-**production は 2026-08-14 に Vercel Cron へ移行した**（T-M8-88。`vercel.json` の `crons`）。この表の「Vercel Cron」列が正本で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（5本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在）。**定時実行が止まってもアプリは200を返し続け、画面には何も出ない**——2026-08-14、本番公開直後に4本とも未設定だったことを `npm run doctor` で初めて検出した。
+**production は 2026-08-14 に Vercel Cron へ移行した**（T-M8-88。`vercel.json` の `crons`）。この表の「Vercel Cron」列が正本で、`vercel.json` との一致は `src/lib/ops/vercel-crons.test.ts` が検査する（4本あること・各schedule・UTCとJSTの取り違え・登録したpathのrouteの実在）。**定時実行が止まってもアプリは200を返し続け、画面には何も出ない**——2026-08-14、本番公開直後に4本とも未設定だったことを `npm run doctor` で初めて検出した。
 
 スロットの設定時刻は09:00〜22:00の00/30分に限定し、定刻の`scheduler_tick`が到来スロットを即座にenqueue・dispatchする（正常系のleaseは定刻から数十秒以内）。transport失敗はlaunchd呼び出し側で30秒、60秒後に最大2回再試行する。定刻起動が3回すべて失敗しても、5分後・10分後のtickが未処理スロットを回収するため、§7.2の期限（+10分）内に通常2回の追加機会がある。
 
@@ -113,7 +113,7 @@ Function開始から180秒を処理deadlineとする（maxDuration 200秒）。J
 
 取得したitemは契約検証（title/summary/URL/impact）の後に**新しさもコードで検証する**。プロンプトの「直近{{hours}}時間」という指示は守られない前提で組む。(1)`published_at`が現在時刻より未来（時計ずれ5分は許容）なら`published_at`を落としてitemは残し、並び順を`fetched_at`へ委ねる（任意項目のために本体を捨てない。未来日時はホームの重要ニュース最上位に居座り続けるため放置できない）。(2)取得窓＋24時間より古いitemは窓外の混入として捨て、理由`published_at:too_old`を残す。24時間の余裕は、日付だけで書かれた記事（00:00補完）や日付をまたいだ更新記事を正当に落とさないためにとる。
 
-**ニュース取得はRSS巡回で回す**（T-M8-380・運営者の指示 2026-08-30「既存のAIリサーチはもう不要。UIは維持したまま裏側を新しい仕組みへ」）。旧仕組み（AIのWeb検索リサーチ→Message Batches・1回$2.3・月$137〜156）は廃止し、`news_batches` 表も削除した。新仕組みは20分おきに監視フィード（`src/lib/news/feeds.ts`・選定時に全URL実取得確認済み。**Google News RSSは規約が個人・非商用限定のため使わない**）をGETし、`source_url` のcanonical重複排除でDB未登録の新着だけを抽出、**新着があったときだけ** `SYS-NEWS-SUM`（プロンプト設計書 §6.10）で日本語のtitle・summary・impactへ整形して `news_items` へ保存する（月$1〜3見込み）。要約AIが失敗した場合は**フィードの生情報（タイトル切り詰め・impact=mid）で保存し**、`news_fetch_outcomes.error_code='summary_fallback'` を残す——ニュースが止まるより素のタイトルで載る方が害が小さい（原則1）。1分野1回の新着は15件まで（初回・フィード追加直後の洪水対策。残りは48時間の鮮度窓の内に次の巡回が拾う）。保存規定（title60字・summary200字・http(s)必須・鮮度）は旧仕組みと同じ `src/lib/news/item-rules.ts` を通し、結果の記録（`news_fetch_outcomes`）・ダイジェスト通知・画面・投稿生成（P1/P6の材料）は何も変わらない。
+**ニュース取得はRSS巡回で回す**（T-M8-380・運営者の指示 2026-08-30「既存のAIリサーチはもう不要。UIは維持したまま裏側を新しい仕組みへ」）。旧仕組み（AIのWeb検索リサーチ→Message Batches・1回$2.3・月$137〜156）は廃止し、`news_batches` 表も削除した。新仕組みは10分おきに（導入時は20分おき・T-M8-383で10分へ）監視フィード（`src/lib/news/feeds.ts`・選定時に全URL実取得確認済み。**Google News RSSは規約が個人・非商用限定のため使わない**）をGETし、`source_url` のcanonical重複排除でDB未登録の新着だけを抽出、**新着があったときだけ** `SYS-NEWS-SUM`（プロンプト設計書 §6.10）で日本語のtitle・summary・impactへ整形して `news_items` へ保存する（月$1〜3見込み）。要約AIが失敗した場合は**フィードの生情報（タイトル切り詰め・impact=mid）で保存し**、`news_fetch_outcomes.error_code='summary_fallback'` を残す——ニュースが止まるより素のタイトルで載る方が害が小さい（原則1）。1分野1回の新着は15件まで（初回・フィード追加直後の洪水対策。残りは48時間の鮮度窓の内に次の巡回が拾う）。保存規定（title60字・summary200字・http(s)必須・鮮度）は旧仕組みと同じ `src/lib/news/item-rules.ts` を通し、結果の記録（`news_fetch_outcomes`）・ダイジェスト通知・画面・投稿生成（P1/P6の材料）は何も変わらない。
 
 `news_fetch`は**取得対象の6分野**（`NEWS_FETCH_CATEGORIES`＝ai・web3・sns・investment・love・beauty）を順に巡回し、分野ごとに結果をcommitする。フィード1本の不調では分野を失敗させず（分野の**全**フィードが読めないときだけ `feed_fetch_failed`）、一部分野の失敗で他分野を止めない。全分野の処理後、新規保存されたニュースを対象に時間単位ダイジェストを作る。metrics/followerはdue対象だけを処理し、1回の上限を超えた残りは次の毎時起動へ委ねる。
 
@@ -130,7 +130,7 @@ launchdのHTTP再試行、切り替え時の二重起動、Vercel Cronの重複�
 - 副作用は冪等キーまたはDB制約（unique）で重複に耐える。
 - 本システムのどの経路も**exactly-onceは保証しない**。
 
-`news_fetch`は時間窓の欠落を許容しないが、NEWSは§2のとおり`generation_jobs`を用いず`news_items.fetched_at`で追跡する。RSS巡回は**毎回フィードの全エントリ（多くは直近数日ぶん）を見る**ため、1回の起動が失敗しても次の20分後の巡回が同じ新着を拾う（鮮度窓48時間の内側にいる限り取りこぼさない）。重複は`source_url`のcanonical unique制約とDB照合で排除するため、`cron_runs`の受付（20分窓）は並行・重複起動の抑止のみを担う。
+`news_fetch`は時間窓の欠落を許容しないが、NEWSは§2のとおり`generation_jobs`を用いず`news_items.fetched_at`で追跡する。RSS巡回は**毎回フィードの全エントリ（多くは直近数日ぶん）を見る**ため、1回の起動が失敗しても次の10分後の巡回が同じ新着を拾う（鮮度窓48時間の内側にいる限り取りこぼさない）。重複は`source_url`のcanonical unique制約とDB照合で排除するため、`cron_runs`の受付（10分窓）は並行・重複起動の抑止のみを担う。
 
 ## 7. スロットenqueue
 
@@ -423,3 +423,4 @@ refresh tokenが古いまま置き去りになり、久しぶりに使ったと�
 | v1.73 | 2026-09-05 | 事業KPI: MRR（`mrr_jpy`）は引き止め割引（`profiles.discount_*`・期限内のみ）を反映し、価格は `PLANS` の現在値（運営者の決定 D-55(1)） |
 | v1.74 | 2026-09-05 | 事業KPI: `cancellations` を `cancel_intents`（解約手続きへ進んだ数）へ改名。実解約は状態指標 `users_canceled`／`users_cancel_scheduled` で持ち、旧名の取り残しはスナップショットが掃除する（D-55(3)・T-M8-427） |
 | v1.75 | 2026-09-05 | §7.1: 予約枠の見積りを「既定6種すべてがWeb検索 always」に合わせ、P-2 を通常0＋URL1 に（T-M8-442） |
+| v1.76 | 2026-09-06 | docs 同期監査（T-M8-446）: §6 の見出しと検査の説明を実数の「定時トリガー4本」へ（`vercel.json`・`vercel-crons.test.ts` と一致）。RSS巡回の間隔に残っていた「20分」を10分へ |

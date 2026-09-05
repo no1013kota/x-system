@@ -33,7 +33,7 @@ Claude Code の中で次を順に打ちます（1・2はどのフォルダで起
 
 | パス | 役割 |
 |---|---|
-| `CLAUDE.md` | Claude Code が毎回読む約束ごと。5つの原則・「検証コマンド」表・「変更影響 → 必須の検証」の対応表 |
+| `CLAUDE.md` | Claude Code が毎回読む約束ごと。5つの原則・「検証コマンド」表・「反映コマンド」表（staging へ反映／本番へ反映／公開先 URL。`/docdd:release` が使う）・「変更影響 → 必須の検証」の対応表 |
 | `.claude/settings.json` | Claude Code の許可設定。**ファイルの編集と変更の記録（`git add`／`git commit`）は確認なしで進む**。ファイルを読む・一覧するだけの操作（`git status` など）も聞かない。丸ごと削除（`rm -rf`）と管理者権限（`sudo`）は禁止。編集のたびに確認したいなら Claude Code に「.claude/settings.json の defaultMode の行を消して」と頼む |
 | `.mcp.json` | Claude Code が使う外部ツール（MCP）の設定。初期値は Next.js 向け（shadcn/ui・Next.js DevTools）。Next.js でなければ `init` が空にする。使う道具に合わせて足す |
 | `docs/README.md` | 仕様書の地図と「どこに何を書くか」のルール（`docs/` の中の README.md はどれも仕様書の一部） |
@@ -52,7 +52,7 @@ Claude Code の中で次を順に打ちます（1・2はどのフォルダで起
 
 手順書（スキル）12本と、導入用の `init`。12本は `add-task` `dev-loop` `doc-sync` `verify-integration` `verify-e2e` `ui-polish` `refactor` `speed-up` `security-audit` `maintenance` `playwright-cli` `release`。
 `init` 以外の12本が何をするかは `CLAUDE.md` の「スキルの地図」にあります（`init` はこの README の「入れ方」）。本文は配布元（GitHub）の `plugins/docdd/skills/<名前>/SKILL.md`（この README と同じ場所にある [`skills/`](./skills/) フォルダ）で、開けば読めます。
-スキルの中の「型検査」「単体テスト」「E2E」は、`CLAUDE.md`「検証コマンド」表のコマンドを指します（`init` のヒアリングで埋まります）。
+スキルの中の「型検査」「単体テスト」「E2E」は、`CLAUDE.md`「検証コマンド」表のコマンドを指します。`release` の「staging へ反映」「本番へ反映」「公開先 URL」は「反映コマンド」表を指します（どちらも `init` のヒアリングで埋まります。「無い」と答えた行の手順は飛ばして理由を報告します）。
 
 ## 最初の30分
 

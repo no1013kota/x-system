@@ -1,10 +1,10 @@
 {
-  "version": "0.1.3",
-  "hash": "sha256:a88fc24ab34a233794698bf9c4016fde8b8a1c6d9a6d33b5360f16b3c32e6bc0",
+  "version": "0.1.4",
+  "hash": "sha256:af32143211f7bd1e60949e3bc6a1c78c0ff947d42e5294a1367bd486fd73b1ca",
   "built": "2026-09-05",
   "sources": {
     "add-task": "sha256:10cc8998dd8e10f8f722d87b10a075a0ac35e1c593e6512d3af0ebf8666b8299",
-    "dev-loop": "sha256:9749ae9a8abf2a02f232b7bd6d6596b6b72407baf4caf5fe68896a1030628291",
+    "dev-loop": "sha256:504cf0b1bf86b158aedd66e3990120c4ff291453d256d4a0b55b65daf7593fe6",
     "doc-sync": "sha256:9145cc686a9cea1d5a4b80c1da706d4e8e3e58b8987913f57b78f2b2f2ab539b",
     "maintenance": "sha256:547c7991946d3c8f4fa833df6a63142242ec160911ff44f800a3a23d3368674f",
     "playwright-cli": "sha256:b4735330d599fdc514ee7f4e1e9764f7fe9a1bb04b9d1e0505675419712f9cee",

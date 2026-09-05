@@ -21,7 +21,9 @@ import { resolveXAccountId } from "./resolve-account";
  * 200だが応答が字数上限に触れて全件破棄され分野が常に0件（T-M7-24）。
  *
  * 呼び出しは手動のみ（`npm run smoke:live` と `/api/cron/canary`）。cron へは登録しない。
- * 実費が発生し、生成枠も消費する（実測: 検索あり生成 $0.11〜0.16／検索なし $0.013／画像 $0.003）。
+ * 実費が発生し、生成枠も消費する。既定パターンは 2026-09-05 以降すべて Web検索あり（最大3回・T-M8-442）で、
+ * 検索なしの生成をこの層で見る場面は無い（実測: 週次まとめの生成 $0.11〜0.16〔2026-07-28〕／
+ * 自分の考え・意見の生成＋画像 $0.074〔2026-09-05〕）。
  */
 
 const db = pooledQueryable();
@@ -217,7 +219,11 @@ async function generationWithSearch(xAccountId: string): Promise<SmokeResult> {
   }
 }
 
-/** 画像付き生成が、子jobまで通って実バイト列の画像に到達すること。 */
+/**
+ * 画像付き生成が、子jobまで通って実バイト列の画像に到達すること。
+ * 使うパターン（自分の考え・意見）も 2026-09-05 以降は Web検索あり（最大3回）なので、
+ * 上の週次まとめと合わせて「検索あり」を2本流す形になる（T-M8-442）。
+ */
 async function generationWithImage(xAccountId: string): Promise<SmokeResult> {
   const name = "生成＋画像（自分の考え・意見）";
   const jobIds: string[] = [];

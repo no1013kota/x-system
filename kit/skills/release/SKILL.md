@@ -28,13 +28,13 @@ model: inherit
 | `src/**`・DB の migration・E2E テスト・依存（`package.json`・lock ファイル）・設定ファイル（フレームワーク・型検査・テストランナー・E2E・ホスティングのもの）・CI の定義（GitHub Actions なら `.github/workflows/**`）・`scripts/**`・公開する静的ファイル（ブログの画像を除く）・`.env.example` | **必要** |
 | `docs/**`・`tasks/**`・ブログ記事とその画像・`.claude/**`・ルートの `*.md`（`CLAUDE.md`・`README.md` 等）・`.gitignore`・`.mcp.json` | 不要（「検証コマンド」表の docs の検査と単体・DBテストが緑であること） |
 
-「不要」で、GitHub と GitHub Actions を使っていれば、印を HEAD に付ける（コミットを書き換えない）:
+「不要」なら、軽量化の印を HEAD に付ける（コミットを書き換えない）。**印（例: light ci）が効くのは、利用者の CI に「HEAD のメッセージに印があれば本体（ビルド・E2E など）を飛ばす」仕組みがあるときだけ**。CI の定義（GitHub Actions なら `.github/workflows/**`）にその仕組みが無ければ、印は無視されて CI が丸ごと走るので、印を付けずに CI を回す（「必要」と同じ扱い。仕組みを足すかは運営者の判断＝要決定へ）。
 
 ```bash
 git commit --allow-empty -m "chore(release): CI 軽量化（<理由: docs のみ 等>） [light ci]"
 ```
 
-他の CI なら、CI の省略の仕組みがあればそれに従い、無ければ CI を回す。
+GitHub Actions 以外の CI なら、その CI の省略の仕組みがあればそれに従い、無ければ CI を回す。いずれの場合も GitHub 公式の省略の印（角括弧付きの skip ci など）は使わない（「ルール」参照）。
 
 ## 2. push（1回だけ）
 
@@ -42,7 +42,9 @@ git commit --allow-empty -m "chore(release): CI 軽量化（<理由: docs のみ
 git push origin <作業ブランチ>     # 例: git push origin stg
 ```
 
-## 3. CI を待つ（「必要」のときだけ）
+## 3. CI を待つ（CI があるなら軽量化でも完了を待つ）
+
+CI は「必要」でも軽量化でも push のたびに走る（軽量化は本体を飛ばすだけで、workflow 自体は動いて緑になる）。「必要」なら本体の完了まで、軽量化なら型検査・lint だけの完了まで（例: 約2分）待つ。CI が無いプロジェクトだけ、この手順を飛ばして報告に書く。
 
 GitHub Actions なら、Monitor で `gh run list --branch <作業ブランチ> --json headSha,status,conclusion` を HEAD の SHA で突き合わせ、`completed success` まで待つ。他の CI なら、その CI の画面かコマンドで HEAD の SHA の結果を確かめる。赤なら **ここで止めて原因を直す**（GitHub Actions なら `gh run view <id> --log-failed`）。直したら手順0からやり直す。
 
@@ -50,7 +52,7 @@ GitHub Actions なら、Monitor で `gh run list --branch <作業ブランチ> -
 
 「反映コマンド」表の「staging へ反映」を実行する。migration があり、コマンドが「適用したのでもう1回実行する」よう求める作りなら、その指示どおりもう1回実行する（求めなければ1回で終える）。
 
-出力を読む。コマンドが結果の項目や「デプロイ後の検証」（人間確認・実物で1周 など）を出す作りなら、その各項目まで読む。そうでなければ終了コード（0 以外なら失敗）とエラー出力で判定する。❌ や失敗があれば止まる。軽量化した場合も CI は完了して緑になる（本体を飛ばすだけ）。
+出力を読む。コマンドが結果の項目や「デプロイ後の検証」（人間確認・実物で1周 など）を出す作りなら、その各項目まで読む。そうでなければ終了コード（0 以外なら失敗）とエラー出力で判定する。❌ や失敗があれば止まる。コマンドが CI の結果を見る作りなら、手順3で待った CI（軽量化でも本体を飛ばすだけで完了して緑になる）が見つかるはず。「CI 結果が見つからない」なら push 漏れか印の誤りを疑う。
 コマンドがホスティング側の build の完了を待たずに「build 中」で止まる作りなら、少し（例: 1〜2分）待って再実行する。
 
 ## 5. PR → 本番ブランチ

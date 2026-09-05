@@ -14,25 +14,24 @@ import { extractPlaceholderNames, placeholdersForFill, fillPlaceholders,
 import { validatePlaceholders } from "./post-patterns-store";
 
 /**
- * T-M8-129 U2。**旧 `switch (pattern)` と同じ結果になることを固定する。**
+ * T-M8-129 U2。**seed の既定値を通したとき、旧 `switch (pattern)` と同じ結果になることを固定する。**
  *
- * 生成の振る舞いを `post_patterns` から引く形へ移すが、既定6種については
- * 何も変わってはいけない。ここが崩れると「見た目は同じなのに検索回数が減った」
+ * 生成の振る舞いを `post_patterns` から引く形へ移した。ここが崩れると「見た目は同じなのに検索回数が減った」
  * のような、利用者からは原因の分からない劣化になる。
  *
- * 期待値は移行前のコードから写した:
- * - `baseWebSearchForPattern`: p1/p4→4回、p3/p6→3回、p2→URLありのみ2回、p5→なし
+ * 期待値は seed の現在値から導く（fixture は seed 関数の値を写す。設定を変えたら migration と同時に直す）:
+ * - Web検索: 既定6種すべて always／最大3回（2026-09-05・T-M8-442・D-57。それまで p2 は URLありのみ2回、p5 は使わない）
  * - `sourceRequired`: p1/p4/p6→常に必須、p2/p3→URLありのとき必須、p5→不要
  */
 
-/** seed が入れる既定値（`supabase/migrations/20260818000001_post_patterns.sql`）。 */
+/** seed が入れる既定値（`supabase/migrations/20260905000002_web_search_all_patterns.sql` の seed 関数）。 */
 const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "prompt">> = {
   p1: {
     seedKey: "p1",
     maxPostsEdit: 6,
     maxPosts: 4,
     webSearchPolicy: "always",
-    webSearchMaxUses: 4,
+    webSearchMaxUses: 3,
     sourcePolicy: "always",
     includeNewsDigest: false,
     requiresQuoteUrl: false,
@@ -42,8 +41,8 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
     seedKey: "p2",
     maxPostsEdit: 1,
     maxPosts: 1,
-    webSearchPolicy: "with_url",
-    webSearchMaxUses: 2,
+    webSearchPolicy: "always",
+    webSearchMaxUses: 3,
     sourcePolicy: "with_url",
     includeNewsDigest: false,
     requiresQuoteUrl: false,
@@ -65,7 +64,7 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
     maxPostsEdit: 5,
     maxPosts: 2,
     webSearchPolicy: "always",
-    webSearchMaxUses: 4,
+    webSearchMaxUses: 3,
     sourcePolicy: "always",
     includeNewsDigest: false,
     requiresQuoteUrl: false,
@@ -75,8 +74,8 @@ const SEEDED: Record<string, Omit<PatternSpec, "id" | "name" | "description" | "
     seedKey: "p5",
     maxPostsEdit: 3,
     maxPosts: 3,
-    webSearchPolicy: "never",
-    webSearchMaxUses: 0,
+    webSearchPolicy: "always",
+    webSearchMaxUses: 3,
     sourcePolicy: "never",
     includeNewsDigest: false,
     requiresQuoteUrl: true,
@@ -106,17 +105,18 @@ function spec(seedKey: string, overrides: Partial<PatternSpec> = {}): PatternSpe
   };
 }
 
-describe("webSearchForSpec（旧 baseWebSearchForPattern と一致する）", () => {
+describe("webSearchForSpec（seed の既定値で旧 baseWebSearchForPattern と一致する）", () => {
+  // 既定6種は 2026-09-05 以降すべて always／最大3回。URLの有無で変わらない（T-M8-442）。
   const cases: [string, boolean, number | undefined][] = [
-    ["p1", false, 4],
-    ["p1", true, 4],
-    ["p4", false, 4],
+    ["p1", false, 3],
+    ["p1", true, 3],
+    ["p4", false, 3],
     ["p3", false, 3],
     ["p6", false, 3],
-    ["p2", false, undefined], // URLが無ければ検索しない
-    ["p2", true, 2],
-    ["p5", false, undefined],
-    ["p5", true, undefined],
+    ["p2", false, 3],
+    ["p2", true, 3],
+    ["p5", false, 3],
+    ["p5", true, 3],
   ];
 
   for (const [seedKey, hasUrl, expected] of cases) {
@@ -126,10 +126,27 @@ describe("webSearchForSpec（旧 baseWebSearchForPattern と一致する）", ()
     });
   }
 
-  it("再試行では1段階ずつ縮小する（provider側の規則をそのまま使う）", () => {
-    expect(webSearchForSpec(spec("p1"), false, 2, reduceWebSearchMaxUses)?.maxUses).toBe(2);
+  // 方針 with_url／never は seed からは消えたが列挙値としては残る（2026-09-05 までの P-2／P-5 の設定）。
+  it("with_url はURLがあるときだけ検索する", () => {
+    const withUrl = spec("p2", { webSearchPolicy: "with_url", webSearchMaxUses: 2 });
+    expect(webSearchForSpec(withUrl, false, 1, reduceWebSearchMaxUses)).toBeUndefined();
+    expect(webSearchForSpec(withUrl, true, 1, reduceWebSearchMaxUses)?.maxUses).toBe(2);
+  });
+
+  it("never はURLがあっても検索しない", () => {
+    expect(
+      webSearchForSpec(spec("p5", { webSearchPolicy: "never" }), true, 1, reduceWebSearchMaxUses),
+    ).toBeUndefined();
+  });
+
+  it("再試行では1段階ずつ縮小する（provider側の規則をそのまま使う・下限1）", () => {
+    expect(webSearchForSpec(spec("p1"), false, 2, reduceWebSearchMaxUses)?.maxUses).toBe(1);
     expect(webSearchForSpec(spec("p1"), false, 3, reduceWebSearchMaxUses)?.maxUses).toBe(1);
     expect(webSearchForSpec(spec("p3"), false, 2, reduceWebSearchMaxUses)?.maxUses).toBe(1);
+    // 4回から始めると 4→2→1 と2段階で縮む
+    const four = spec("p1", { webSearchMaxUses: 4 });
+    expect(webSearchForSpec(four, false, 2, reduceWebSearchMaxUses)?.maxUses).toBe(2);
+    expect(webSearchForSpec(four, false, 3, reduceWebSearchMaxUses)?.maxUses).toBe(1);
   });
 
   it("回数0は方針に関わらず検索しない（DBのCHECKと同じ意味）", () => {
@@ -159,14 +176,14 @@ describe("sourceRequiredForSpec（旧 sourceRequired と一致する）", () => 
 });
 
 /**
- * 予約実行の投稿枠（要件04 §7.1 に書かれている値）。**移行前の `ROLLBACK_SAFE_BUDGET` と
- * 一致していなければならない**——ここがずれると premium の自動投稿が早く止まる／
- * 枠を超えて動く、のどちらかになる。
+ * 予約実行の投稿枠（要件04 §7.1 に書かれている値）。**要件04 の表と一致していなければならない**
+ * ——ここがずれると premium の自動投稿が早く止まる／枠を超えて動く、のどちらかになる。
+ * P-2 は 2026-09-05 に Web検索 always になったため「通常0＋URL1」（それまでは通常1＋URL0・T-M8-442）。
  */
 describe("scheduledPostSlots（要件04 §7.1 の値と一致する）", () => {
   const cases: [string, number, number][] = [
     ["p1", 10, 1],
-    ["p2", 1, 0],
+    ["p2", 0, 1],
     ["p3", 12, 1],
     ["p4", 8, 1],
     ["p6", 12, 1],
@@ -273,8 +290,12 @@ describe("buildPatternRules（設定をAIへ渡す文）", () => {
     expect(rules("p1", {}, { webSearchMaxUses: null })).toContain("Web検索: 使わない");
   });
 
-  it("URLが無くて検索しない場合は、その理由まで書く", () => {
-    const text = rules("p2", {}, { webSearchMaxUses: null, hasInputUrl: false });
+  it("URLが無くて検索しない場合（方針 with_url）は、その理由まで書く", () => {
+    const text = rules(
+      "p2",
+      { webSearchPolicy: "with_url" },
+      { webSearchMaxUses: null, hasInputUrl: false },
+    );
     expect(text).toContain("<user_input>に参考URLが無いため");
   });
 

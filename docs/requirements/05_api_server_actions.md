@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.82 |
-| 更新日 | 2026-09-03 |
+| バージョン | v1.83 |
+| 更新日 | 2026-09-06 |
 | 関連 | 全画面、全ジョブ |
 
 ## 1. 方針
@@ -106,7 +106,7 @@
 
 | Action | 入力 | 出力 | 認可/制約 |
 |---|---|---|---|
-| `signUp` | email, password, password_confirmation, terms_version, privacy_version, captcha_token | pending user | 現行version一致、明示checkbox、password一致、Turnstile検証を必須化。**エラーが無い応答でも登録済みを判定する**（T-M8-149。`identities` が空、または `email_confirmed_at` が入っていれば既存アカウント。ホスト版Supabaseは列挙対策で登録済みでも成功と同じ形を返しメールを送らないため、素通りさせると来ないコードを待つ画面へ送り込む） |
+| `signUp` | email, password, password_confirmation, terms_version, privacy_version, captcha_token, signup_source（hidden・任意） | pending user | 現行version一致、明示checkbox、password一致、Turnstile検証を必須化。**`signup_source`は流入元slug**（T-M8-423。登録画面が`?src=<slug>`を持つときだけhiddenに入る）: `parseTrafficSource`で正規化（小文字化・形式`^[a-z0-9_-]{1,32}$`外は`''`）し、値があるときだけ登録直後に`profiles.signup_source`へ**1回だけ**書く（同意version・時刻と同じupdate）。以後は変えない。形式外・未登録は直接扱いの`''`のまま登録が進む（同意version・時刻と同じ1回のupdateで書くため、流入元だけが別に失敗する経路は無い）。**エラーが無い応答でも登録済みを判定する**（T-M8-149。`identities` が空、または `email_confirmed_at` が入っていれば既存アカウント。ホスト版Supabaseは列挙対策で登録済みでも成功と同じ形を返しメールを送らないため、素通りさせると来ないコードを待つ画面へ送り込む） |
 | `verifySignUpCode` | email, code | session＋`/plans?confirmed=1`へredirect | 6桁コードを `verifyOtp({type:'signup'})` で検証（T-M8-121）。全角数字・空白・ハイフンを吸収してから桁数を見る。**captchaは要求しない**——直前の登録または未確認ログインで既にpassword／Turnstileを検証済みで、ここで再度求めるとコード入力だけの画面で詰む経路が増える |
 | `signIn` | email, password, captcha_token, next(optional) | session/redirect | Turnstile token必須。generic error。`email_not_confirmed`のみemail付きの6桁コード入力状態。画面側は新しい再送専用Turnstile tokenで`resendSignUpConfirmation`を自動実行する。契約未選択は`/plans`、他はsafeな相対`next`または`/app`。認証成功後はprofileを1回読み、欠損時だけ作成・再読込する（通常ログインで存在確認upsertを行わない）。profile確認に失敗したsessionは破棄する |
 | `requestPasswordReset` | email, captcha_token | accepted | Turnstile token必須。`resetPasswordForEmail`へ`{APP_BASE_URL}/auth/confirm`を指定。メール存在有無・CAPTCHA以外のprovider結果にかかわらず同じ応答 |
@@ -169,6 +169,19 @@ X OAuth開始/完了はAPI Routesを使う。BYOKは保存済みX API keyをOAut
 - access tokenが5分以内に失効する場合は、短いDB transactionで`token_refresh_lock_id`と`token_refresh_locked_at`を条件付き更新し、single-flight leaseを取ってからrefreshする。他の実行は最大10秒待って再読込し、1分超のleaseはstaleとして回収する。rotated refresh tokenと期限はlock ID一致を条件に同一transactionで更新する。
 - refresh完了・失敗のどちらでもleaseを解除する。**token endpointの4xx**（`invalid_grant`・`invalid_request`）または必要scope不足はlock ID一致を確認して`status = expired`とし、自動処理を止めて再連携通知を作る。`invalid_grant`だけを対象にすると、Xが失効tokenへ`invalid_request`を返すケースで**画面が「連携済み」のままrefreshが永遠に失敗し続ける**（2026-08-15に実発生・T-M8-96）。network/5xxは一時エラーとしてretryable扱いのまま。tokenの平文と外部レスポンス本文はブラウザへ返さない（暗号化済みciphertextがRLS selectに含まれることは受容済みリスクとする。データモデル §5参照）。
 - `enableXAccount`は現在planの件数上限に空きがあり、planに対応する`auth_type`で、refreshと`/2/users/me`が成功する場合だけ許可する。失敗時は再連携へ誘導する。
+
+### 4.4 運営（/admin）
+
+運営ダッシュボード `/admin`（正本は [monitoring.md](../operations/monitoring.md)「運営ダッシュボード」）から呼ぶAction。**運営者ゲート**は画面と同じ判定——ログイン済みかつメールが`SUPPORT_EMAIL`と一致する利用者だけ。それ以外はDBに触れず「この操作はできません。」を返す（画面側は404）。
+
+| Action | 入力 | 出力 | 認可/制約 |
+|---|---|---|---|
+| `createTrafficSource` | slug, label（FormData） | `{status: success\|error, message}` | 運営者のみ。流入元の台帳`traffic_sources`（要件02 §3.33・T-M8-423）へ1件登録し、追跡URL `/?src=<slug>` の元になる。**slugは後から変えられない**（配ったURLが切れる） |
+
+- **入力の言い分け**: slugは`signUp`側と同じ`parseTrafficSource`で正規化（前後の空白除去・小文字化）してから`^[a-z0-9_-]{1,32}$`で判定し、形式外は例（`x_bio`）付きの文言で返す。labelは1〜60文字（`TRAFFIC_SOURCE_LABEL_MAX`）で、空・超過は文字数を示す文言で返す。
+- **重複**は`insert … on conflict (slug) do nothing`の0件更新で検出し、「登録済みです。別の名前にしてください。」と**DB失敗（「登録できませんでした。時間をおいて再度」・Sentryへ記録）とは別の文言**で返す（原則1・2）。
+- 成功時は`revalidatePath("/admin")`で一覧を即時更新し、「追跡URLを配ってください」と次の行動を示す。
+- 結果の型は共通の`BaseResult`ではなく`TrafficSourceFormState`（`useActionState`用・`idle|success|error`＋message）。
 
 ## 5. 投稿・下書き
 
@@ -389,6 +402,7 @@ MVPでは専用audit tableは作らない。最低限、次を永続化して追
 | v1.80 | 2026-09-01 | applyLearningToSettings／learningApplyStatus の表行を追加。learningApplyStatus は直近の反映jobの結果（lastApply）と提案の有無（proposalReady）を返す（T-M8-410） |
 | v1.81 | 2026-09-01 | updatePersonaSettings が本棚へ1件追加して使用中にし、結果に preset を返す（T-M8-411） |
 | v1.82 | 2026-09-03 | listNewsItems の theme/impact を themes[]/impacts[] の複数選択ソートへ（いずれか一致を先頭へ・T-M8-412） |
+| v1.83 | 2026-09-06 | docs 同期監査（T-M8-446）: `signUp` に流入元 `signup_source`（hidden・T-M8-423）を追記。§4.4「運営（/admin）」を新設し `createTrafficSource` を記載 |
 
 ### 下書きの投稿予約（T-M8-157）
 

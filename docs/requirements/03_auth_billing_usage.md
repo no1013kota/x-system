@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.72 |
-| 更新日 | 2026-09-05 |
+| バージョン | v1.73 |
+| 更新日 | 2026-09-06 |
 | 関連 | PRD A/O、SC-02〜04/SC-11 |
 
 ## 1. 認証
@@ -170,7 +170,7 @@ profile rowをtransaction内でlockし、保存済み`subscription_event_created
 ## 5. 契約状態とアクセス
 
 **実行できない状態では機能画面を開けない**（T-M8-269→T-M8-273・運営者の指示 2026-08-23）。
-触れるのは**友達招待（契約不要）と設定＞課金・プラン**だけで、それ以外はホームを含めてロックし、
+触れるのは**友達招待（契約不要）と設定＞課金・プラン**だけで（友達招待の導線は `FEATURE_INVITE_ENABLED=true` のときだけ出す・下記）、それ以外はホームを含めてロックし、
 その場に理由と直し方を出す（リダイレクトはしない——どこへ来たのかが分かるまま理由を言う）。
 
 **ただしプラン未登録（`profiles.plan` が無い＝一度も契約していない）は設定画面ごとロックする**
@@ -205,11 +205,13 @@ profile rowをtransaction内でlockし、保存済み`subscription_event_created
 
 **どのstatusでも課金停止・解約を理由にデータを自動削除しない**（ロック中も保持し、登録・再開・支払い更新でそのまま使える。画面にもその旨を出す）。**友達招待（要件06 SC-12）は契約を要さない**——契約前でも解約後でも参加でき、LPの招待セクションからも入れる（未ログインは`/login?next=/app/invite`経由でログイン後そのまま招待画面へ着く）。
 
+**ただし友達招待の導線は一時非表示**（T-M8-445・運営者の指示 2026-09-05「一旦隠す」）。LPの招待カードとnav・App Shellのナビ（PC／モバイル下部バー）・ロック画面と契約バナーの「友達招待は使える」旨の一文は、環境変数 `FEATURE_INVITE_ENABLED`（要件01 §3・未設定＝`false`＝非表示）が `true` のときだけ出す。`/app/invite` 本体・`/r/{code}`・報酬の確定と振込（§招待プログラム）はこの値に関係なく動く（既存の報酬を守る。上の表の「友達招待: 可」はこの意味）。導線が無いのに「引き続き使える」と言わないため、案内文も同じ判定で切り替える。復活はVercelへ `FEATURE_INVITE_ENABLED=true` を足すだけで、コードは変えない。
+
 **route guardは認証だけを見る**（T-M8-268）。未ログインを`/login?next=…`へ送るだけで、契約状態でのredirectは行わない（proxyのprofile読み取りも削除・要件01 §5）。ロックは**各画面が自分で**行う（`loadAppLock`／設定は同じprofileから`appLockFor`）——リダイレクトにすると、どの画面へ来たのかが分からないまま料金表に着く。生成・投稿系の停止はServer Action側と job lease（要件04 §4.1）で行う。ログイン後・登録後の着地も`/app`（または`next`）で統一し、契約状態で行き先を変えない。
 
 8 statusの閲覧範囲、実行可否、主導線は1つの共通マッピングを正とし、route guard、login後遷移、生成・投稿・自動実行のmutationガード、課金バナーで共有する。実行を許可するのは`trialing`／`active`だけとする。それ以外は`subscription_required`を返し、`details.missing=[subscription]`、現在status、`details.settingsPath=/app/settings?tab=billing|/plans`を含める。
 
-App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paused`をヘッダー直下の常設警告として表示してCustomer Portalへ誘導する（機能はロックされているので「閲覧はできる」と書かない）。Customer ID欠損時はCheckoutへfail closedする。`canceled`・未契約は「閲覧と友達招待は使える／生成・投稿にはプランが要る」と正確に伝えて新規Checkoutへ誘導し（課金タブでは「プランを再開」も使える・§6.1）、`trialing`はJSTの`trial_ends_at`を常設情報として表示する。これらのstatusでも既存データ閲覧は維持する。
+App Shellは`notification_config`を参照せず、`past_due`／`unpaid`／`paused`をヘッダー直下の常設警告として表示してCustomer Portalへ誘導する（機能はロックされているので「閲覧はできる」と書かない）。Customer ID欠損時はCheckoutへfail closedする。`canceled`・未契約は「生成・投稿にはプランが要る（データは保持している）」と正確に伝えて新規Checkoutへ誘導し（「友達招待は使える」の一文は導線が出ているとき＝`FEATURE_INVITE_ENABLED=true` のときだけ添える・T-M8-445。課金タブでは「プランを再開」も使える・§6.1）、`trialing`はJSTの`trial_ends_at`を常設情報として表示する。これらのstatusでも既存データ閲覧は維持する。
 
 ## 6. プラン変更
 
@@ -481,3 +483,4 @@ Stripe SDKは`stripe@22.3.2`、API versionは`2026-06-24.dahlia`へ固定した�
 | v1.70 | 2026-09-04 | 申込前の常時表示を実装に合わせて訂正: プロモ帯は「カード登録が必要」「期間中解約無料」の2点（「初回のみ」は 2026-08-26 に帯から外した）＋CTAより上の1行「はじめての方は7日間無料（カード登録が必要）です。」（T-M8-424） |
 | v1.71 | 2026-09-04 | プラン選択の常時表示から見出し下の1行を外す（運営者の指示・D-56・T-M8-425） |
 | v1.72 | 2026-09-05 | `profiles.discount_*` の説明に /admin のMRRへの波及を追記（D-55(1)・要件04 KPI節を相互参照） |
+| v1.73 | 2026-09-06 | 友達招待の導線（LP・ナビ・ロック画面と契約バナーの案内文）を `FEATURE_INVITE_ENABLED` 配下の一時非表示へ（T-M8-445）。`/app/invite` 本体・`/r/{code}`・報酬処理はフラグに関係なく動く。docs 同期監査（T-M8-446） |

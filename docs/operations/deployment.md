@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.23 |
-| 更新日 | 2026-09-05 |
+| バージョン | v1.24 |
+| 更新日 | 2026-09-06 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -89,36 +89,21 @@ npm run release:check    # typecheck → lint → check:doc-dates → check:doc-
 
 **リリースの流れ（要決定D-8 案A・2026-07-30。2026-09-05 以降の実手順は `/release` スキル＝`.claude/skills/release/SKILL.md` が正）**
 
-> **現在の流れ（2026-08-22 に stg の旧履歴を main の祖先へ取り込んで以降）**: `stg` へ push → CI（差分により省略可・[CI](./ci.md) §1）→ `npm run release:staging -- --apply` → **`stg` → `main` の PR**（`gh pr create --base main --head stg`）→ マージ → Vercel の build 完了を待つ → `npx supabase link --project-ref hvjizoahdqfvasiqzzkv` → `npm run release:production -- --apply` → staging へ link を戻す。下の D-28 の注記は当時の分岐状態の記録で、いまは `stg` → `main` の PR が使える（PR #45・#46 で実施）。
-
 **`main` への直pushは branch protection で拒否される**（実測 2026-08-18: `GH006 Protected branch update failed`・
 「Changes must be made through a pull request」「2 of 2 required status checks are expected」）。
-必ずPR経由で入れる。
+必ず **`stg` → `main` の PR** 経由で入れる（2026-08-22 以降。PR #45 以降はすべてこの形）。
 
-1. `main` から**作業ブランチ**を切る（例 `release/YYYY-MM-DD-<内容>`）
-2. そのブランチを push → CI が緑になるのを確認
-3. ブランチ → `main` の **プルリクエストを作る**（`gh pr create`）
-4. 必須チェック2本が緑になったらマージ → production ビルドが始まる
-5. `npm run release:production -- --apply` で migration 適用とデプロイ後検証を行う
+1. 依頼された変更を全部コミットしてから **`stg` へ push（1回にまとめる）** → CI が緑になるのを待つ。差分が docs・BACKLOG・ブログ・`.claude/**`・`kit/**` だけなら空コミットの件名に `[light ci]` を付けて**軽量化**できる（CI は走り、本体だけ飛ばして約2分で緑・[CI](./ci.md) §1）
+2. `npm run release:staging -- --apply`（migration があれば「適用 → もう1回」の2回）
+3. **`stg` → `main` の PR** を作ってマージする（`gh pr create --base main --head stg` → `gh pr merge --merge`）。stg → main の PR では CI の job は走らず、push 時の同一コミットの結果が必須チェックに効く。main のマージコミットは stg と同一 tree なので CI は本体を飛ばす（[CI](./ci.md) §2）
+4. main の Vercel build が `success` になるのを待つ
+5. `npx supabase link --project-ref hvjizoahdqfvasiqzzkv`（本番）→ `npm run release:production -- --apply` → `npx supabase link --project-ref uykffujqpsogqffbnsrz`（staging へ戻す。戻し忘れると次の staging 反映が本番 DB を見る）
 
-> **`stg` → `main` のPRは使えない**（D-28）。`stg` と `main` は**SHAが分岐**しており、
-> PRにすると同じ内容の55件が差分として並ぶ。staging を検証したいときは `stg` へ別途 push する
-> （`supabase link` の向き先を張り替えてから・§5）。**本番へ入れるのは `main` から切った作業ブランチ**にする。
->
-> **`stg` はforce-push禁止の保護つき**（D-16）。SHA分岐のままだと通常pushも拒否されるので、
-> **内容を変えずに旧履歴だけ祖先へ取り込む**（2026-08-22 に確立した手順）:
-> ```bash
-> git branch -f stg <反映したいコミット>
-> git checkout stg
-> git merge -s ours origin/stg -m "chore: stgの旧履歴を取り込む（D-28）"  # ツリーはこちら側のまま
-> git push origin stg   # fast-forwardになる
-> ```
-> `-s ours` が安全なのは、origin/stg の内容（2026-08-17時点）がPR #13でmainへ全て入っているため。
-> 逆方向（stgの内容を残す）には決して使わないこと。
+> **経緯（D-28・D-16・2026-08-17〜22）**: かつて `stg` と `main` は **SHA が分岐**しており、stg → main の PR にすると同じ内容の55件が差分として並ぶため、本番へは `main` から切った作業ブランチ（`release/YYYY-MM-DD-<内容>`）を PR していた。`stg` は force-push 禁止の保護つき（D-16）で分岐のままだと通常 push も拒否されるため、2026-08-22 に**内容を変えずに旧履歴だけ祖先へ取り込む**手順（`git branch -f stg <反映したいコミット>` → `git merge -s ours origin/stg` → fast-forward で push。`-s ours` が安全だったのは origin/stg の内容が PR #13 で main へ全て入っていたため）で解消した。以後 `stg` は `main` から分岐せず常に先行し、上の手順で反映している。分岐が再発したら同じ手順で戻せるが、**逆方向（stg の内容を残す `-s ours`）には決して使わない**。
 
 保護の必須チェックは `型・lint` と `release:check（DB・build・E2E）` の2本。
 **2026-07-30 時点では「private × GitHub Free では保護が使えない」と記録していたが、現在は有効になっている**
-（要決定D-14 の結果）。CIが赤いとマージできないので、pushの前に手元で `npm run release:check` を通しておく。
+（要決定D-14 の結果）。CIが赤いとマージできないので、push の前に手元で回す量は `CLAUDE.md`「変更影響 → 必須の検証」§2「いつ回すか」の表を正とする（変更ごとの型・lint・単体に加え、**push 前にまとめて `npm run build && npm run check:csp-nonce && npm run test:e2e`**。同じ表を `/release` スキルも前提にしている）。
 
 ---
 
@@ -159,6 +144,8 @@ npm run release:check    # typecheck → lint → check:doc-dates → check:doc-
 | `SENTRY_DSN` / `NEXT_PUBLIC_SENTRY_DSN` | Sentry |
 
 さらに `PREMIUM_TEXT_PROVIDER` / `NEWS_TEXT_PROVIDER` で選んだ provider の**運営APIキー**（`ANTHROPIC_API_KEY` 等）が必須。未設定だと起動しない。
+
+**任意（機能フラグ）: `FEATURE_INVITE_ENABLED`** — 友達招待の**導線**（LP のカードと nav・アプリのサイドバーとモバイル下部バー・ロック画面と契約バナーの案内文）を出すか。未設定＝`false`＝非表示（2026-09-05・T-M8-445・運営者の指示「一旦隠す」）。**復活は Vercel の該当環境に `FEATURE_INVITE_ENABLED=true` を足して Redeploy するだけ**（コード変更なし。環境変数は次のデプロイから効く）。`/app/invite` 本体・`/r/{code}` の帰属・報酬の確定と振込はこの値に関係なく動く（既存の報酬を守る）。判定は `src/lib/env-schema.ts`（`"true"` だけ真）と `src/lib/invite/entry-visibility.ts`。
 
 ### 1.3 秘密値の生成
 

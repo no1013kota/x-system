@@ -168,8 +168,9 @@ export function sourceRequiredForSpec(spec: PatternSpec, hasReferenceUrl: boolea
 export function scheduledPostSlots(spec: PatternSpec): { normal: number; url: number } {
   // 上限まで作られる最悪ケースで見積もる（編集で増やせる分も含む）。
   const posts = Math.max(1, spec.maxPostsEdit);
-  // **出典URLが付きうるか**を保守的に見る。予約実行では利用者が参考URLを渡さないので、
-  // 「必ずWeb検索する」か「出典を必ず求める」パターンだけがURLを付ける。
+  // **出典URLが付きうるか**を保守的に見る。「必ずWeb検索する」か「出典を必ず求める」パターンは
+  // 最終ポストにURLが付きうるので URL枠を1つ見込む。予約スロットは参考URL（`schedule_slots.source_url`・
+  // 要件02 §3.10）を持てるが、`with_url` の出典方針だけのパターンでそれにより付く分は見込まない（上の docblock）。
   // 既定6種はすべて Web検索 always なので該当する（要件04 §7.1 の数値と一致・T-M8-442）。
   const lastIsUrl = spec.webSearchPolicy === "always" || spec.sourcePolicy === "always";
   const url = lastIsUrl ? 1 : 0;

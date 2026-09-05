@@ -3,7 +3,7 @@
 | 文書 | 主な内容 |
 |---|---|
 | [01_system_architecture.md](./01_system_architecture.md) | システム構成、技術スタック、環境変数、ルーティング、認証ガード |
-| [02_data_model.md](./02_data_model.md) | DB21テーブル、enum、制約、index、RLS、JSONスキーマ、外部API原価台帳、seed |
+| [02_data_model.md](./02_data_model.md) | DBの全テーブル（数は同文書 §3 の見出しが正）、enum、制約、index、RLS、JSONスキーマ、外部API原価台帳、seed |
 | [03_auth_billing_usage.md](./03_auth_billing_usage.md) | 認証、Stripe課金状態、プラン変更、プレミアム利用枠、usage_events |
 | [04_jobs_and_automation.md](./04_jobs_and_automation.md) | generation_jobs、即時dispatch、定時トリガー4本、lease、retry、失敗復旧 |
 | [05_api_server_actions.md](./05_api_server_actions.md) | API Routes / Server Actions、入力/出力、認可、エラー形式 |

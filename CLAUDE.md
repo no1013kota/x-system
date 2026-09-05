@@ -51,8 +51,8 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | `/speed-up` | 密結合をほどいて画面遷移を速くする（WIP=1）。**利用者に害があるならやらない** | 前後の数字つきの1単位＋落とした候補の理由 |
 | `/security-audit` | セキュリティの穴を探す。**反証してから**直すか要決定へ回す | 直した穴＋要決定＋棄却した候補と理由 |
 | `/maintenance` | 週次・月次の定期点検 | 時間経過で壊れた箇所の報告 |
-| `/blog-write` | ブログ記事を書く（テーマか参考URLを渡す） | `blog/` に下書き（`draft: true`）＋ `blog:check` 緑 |
-| `/blog-publish` | 下書き記事を公開する | draft解除・日付更新・記事ファイルだけのコミット |
+| `/blog-write` | ブログ記事を書く（テーマか参考URLを渡す） | `blog/drafts/` に下書き（`draft: true`）＋アイキャッチ・図＋ `blog:check` 緑 |
+| `/blog-publish` | 下書き記事を公開する | `blog/published/` へ移動・draft解除・日付更新・記事とその画像（アイキャッチ・図）だけのコミット |
 | `/playwright-cli` | ブラウザ操作の道具箱（他スキルから参照） | — |
 | `/release` | 依頼を全部終えたあと、staging → 本番へ反映する（CI の要否を差分から判断・push は1回） | PR・本番反映・実ブラウザ確認・CI 要否の理由 |
 
@@ -62,7 +62,7 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 ## 仕様の読み方（実装時に必ず該当セクションを参照）
 
 - **何を作るか** → `docs/PRD.md`（機能ID: A/L/N/P/S/K/M/O/R）
-- **どう作るか（画面・DB・処理）** → `docs/要件定義書.md`から`docs/requirements/`を参照（SC-01〜12、DB28テーブル、定時トリガー4本）
+- **どう作るか（画面・DB・処理）** → `docs/要件定義書.md`から`docs/requirements/`を参照（画面 SC-01〜12＋SC-01b、DB31テーブル＝一覧は`docs/requirements/02_data_model.md` §3、定時トリガー4本）
 - **AIの動かし方** → `docs/プロンプト設計書.md`（実行ID: GEN/NEWS/LRN/MD-MERGE/SUGGEST、プロンプト全文、検証）
 - versionはファイル名ではなく文書内ヘッダを正とする（運用ルールは`docs/README.md`）
 
@@ -95,7 +95,7 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | **外部サービスの設定に依存する画面**（人間確認・OAuth・決済） | **`npm run check:turnstile -- --base <URL>`** ＋ 実ブラウザ。**相手側の設定（許可ドメイン等）はコードに現れず、モックしたテストでは原理的に見えない**（2026-08-01、stagingでログイン・新規登録が両方不可なのに全テスト緑だった） |
 | cron / job | `/verify-integration` ＋ 該当cronを実際に1回叩き、**結果の中身**（保存件数・失敗分野）まで確認する |
 | **配布キットの入力**（`.claude/skills/**`・`kit/**`・`.mcp.json`・`.claude/settings.json`・`scripts/check-doc-dates.mjs`・`scripts/check-doc-refs.mjs`・`scripts/audit-check.mjs`） | `npm run dev-kit`（`dist/docdd/` と `kit/BUILD.json` を作り直す。`.claude/skills/` を変えたら派生の `kit/skills/` へ反映するか判断する。中身が変わったら `kit/VERSION` を上げ、`dist/docdd/` を公開リポジトリへ push する。忘れると `src/lib/ops/dev-kit.test.ts` が赤になる） |
-| **ドキュメント・スキル定義のみ**（`docs/**`・`tasks/**`・`.claude/**`・`*.md`。実行されるコードを含まない） | `/doc-sync`（正本との整合確認）。テストは不要。**ただし参照先の実在**（コマンド名・スキル名・ファイルパス）を実際に確認する。**ブログ記事 `blog/published/*.md`・`blog/drafts/*.md` は例外**で `npm run blog:check`（front matter・画像の実在）を通す |
+| **ドキュメント・スキル定義のみ**（`docs/**`・`tasks/**`・`.claude/**`・`*.md`。実行されるコードを含まない） | `/doc-sync`（正本との整合確認）。テストは不要。**ただし参照先の実在**（コマンド名・スキル名・ファイルパス）を実際に確認する。**`.claude/skills/**` は上の「配布キットの入力」行にも該当**する（`npm run dev-kit` を忘れると `src/lib/ops/dev-kit.test.ts` が赤になる）。**ブログ記事 `blog/published/*.md`・`blog/drafts/*.md` は例外**で `npm run blog:check`（front matter・画像の実在・太字にならない `**`）を通す |
 | 上記以外 | `npm run release:check` |
 
 **「実物を1周」の意味**: リクエストが受理されること（`check:providers`）では足りない。**応答をアプリが扱えて、最終成果物が正しいところまで**見る。2026-07-28 の不具合は「APIは200を返すがアプリ側で落ちる／黙って0件になる」型だった。手段は **`npm run smoke:live -- --account <xAccountId>`**（要 `npm run dev`）。判定は `src/lib/smoke/scenarios.ts` にあり、デプロイ先では同じものを `/api/cron/canary` で叩ける。
@@ -105,7 +105,7 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 ### 2. いつ回すか
 
 **遅いのはE2Eとbuildだけ**なので、その2つだけpush前へまとめる（実測値と経緯は[開発とテストの進め方](docs/operations/development-and-testing.md) §「検証をいつ回すか」）。
-`.github/workflows/ci.yml` が push時に `release:check`（build・E2E込み）を回すため、
+`.github/workflows/ci.yml` が push時に `release:check`（build・E2E込み）を回すため（`[light ci]` を付けた push を除く）、
 **コミットごとにローカルでE2Eまで回すのはCIとの二重実行**になる。
 
 | 段 | 何を回すか | 実測 |
@@ -113,6 +113,8 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | 変更ごと | `npm run typecheck && npm run lint && REQUIRE_DB=1 npx vitest run` | 約40秒 |
 | コミット前 | ＋ `npm run check:doc-dates && npm run check:doc-refs` | ＋5秒 |
 | **push前（まとめて1回）** | ＋ `npm run build && npm run check:csp-nonce && npm run test:e2e` | 約10分 |
+
+この表が push 前に回す量の正本（`docs/operations/deployment.md`・`/release` はここを参照する）。
 
 **push は作業のまとまりの最後に1回だけ**（運営者の指示 2026-09-05）。途中のタスクはローカルにコミットだけ積み、
 運営者から受けた依頼を全部終えて release する直前に push する。CI は push ごとに約14分走るため、

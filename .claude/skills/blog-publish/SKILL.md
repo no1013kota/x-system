@@ -1,12 +1,12 @@
 ---
 name: blog-publish
-description: blog/drafts/ の下書き記事を公開してコミットする。front matter を検証（npm run blog:check）→ blog/published/ へ移動して draft を外す → 記事ファイルだけをコミット。引数はファイル名（例 /blog-publish x-prompt-basics.md）。書くのは /blog-write。
+description: blog/drafts/ の下書き記事を公開してコミットする。front matter を検証（npm run blog:check）→ blog/published/ へ移動して draft を外す → 記事とその画像だけをコミット。引数はファイル名（例 /blog-publish x-prompt-basics.md）。書くのは /blog-write。
 model: inherit
 ---
 
 # blog-publish：下書きを公開してコミットする
 
-`blog/drafts/<slug>.md` を **`blog/published/` へ移動して `draft: true` を外し、記事ファイルだけをコミットする**（T-M8-193。画面が読むのは published だけ——移動を忘れると公開されない）。公開の正本は [blog/README.md](../../../blog/README.md)（front matter・制約・運用の流れ）。
+`blog/drafts/<slug>.md` を **`blog/published/` へ移動して `draft: true` を外し、記事とその画像（アイキャッチ・図）だけをコミットする**（T-M8-193。画面が読むのは published だけ——移動を忘れると公開されない）。公開の正本は [blog/README.md](../../../blog/README.md)（front matter・制約・運用の流れ）。
 
 **このスキルは本文を書き換えない。** 直すべき点があれば止めて報告する（直すのは `/blog-write` か運営者）。
 
@@ -22,7 +22,7 @@ model: inherit
 ### 1. 読んで最終確認する
 
 記事全文を読み、次に該当すれば**公開せずに止めて報告する**（判断は運営者）。
-文体の粗さは止める理由にしない（2026-08-23に上乗せ分を撤廃）——止めるのは次の3つだけ。
+文体の粗さは止める理由にしない（2026-08-23に上乗せ分を撤廃）——止めるのは次の4つだけ。
 
 - **Exos AI の効果を約束している**（「必ず伸びる」「フォロワー○倍」「保証」「No.1」）＝景品表示法の問題になる
 - 本文中の画像 `/blog-images/...` や front matter の `image`（アイキャッチ）が `public/blog-images/` に実在しない（アイキャッチが無いなら `npm run blog:eyecatch -- <slug>` で作ってよい。本文は変えない）
@@ -60,12 +60,12 @@ git commit -m "blog: <記事タイトル>"
 ### 5. 報告する
 
 - 公開URL: `/blog/<slug>`（本番なら `https://exosai.net/blog/<slug>`）
-- 反映は通常どおり: `npm run release:staging` → 確認 → `npm run release:production`（[デプロイ手順 §0.0](../../../docs/operations/deployment.md)）
+- 反映は `/release`（依頼を全部終えてから1回。中で `release:staging` → PR → `release:production` を通す。[デプロイ手順 §0.0](../../../docs/operations/deployment.md)）
 - 本番反映後、`npm run doctor -- --base https://exosai.net` の「ブログ記事の同梱」が緑で、公開件数が1増えていること
 
 ## ルール
 
 - 1回に公開するのは**1記事**。まとめて公開しない（問題が出たとき切り分けられない）。
-- push・release は自動で行わない。運営者がコマンドを叩く。
+- push・release はこのスキルでは行わない（依頼を全部終えたあと `/release` でまとめて反映する）。
 - 本文の誤字・表現の修正は**提案に留める**（公開の判断と文責は運営者）。
 - `blog:check` が赤のままコミットしない。

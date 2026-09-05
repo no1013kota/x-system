@@ -5,6 +5,7 @@
 - 実装を始める人はまず [開発とテストの進め方](./operations/development-and-testing.md)
 - 運用中に「いま何が壊れているか」を知るには [動いているかの見張り方](./operations/monitoring.md)
 - 触った層ごとの必須の検証は `CLAUDE.md`「変更影響 → 必須の検証」が正本
+- staging・本番への反映は `/release`（`.claude/skills/release/SKILL.md`。CI の要否を差分から決め、push は1回）
 
 ## 1. どこに何があるか
 
@@ -16,17 +17,18 @@
 | [要件定義書](./要件定義書.md) | どう作るかの全体像と、下の詳細への索引 | 詳細文書の構成が変わる |
 | [プロンプト設計書](./プロンプト設計書.md) | AI実行ID、プロンプト全文、出力検証、provider adapter | AI実行・プロンプト・検証・計数が変わる |
 | [投稿パターン別プロンプト設計](./prompt/README.md) | パターンごとの高インプレ実例・構造分解・設計判断（本文の正本はコードと設計書§6） | 投稿パターンのプロンプトを変える（先に設計を更新する） |
+| [招待プログラム 実装仕様書](./cp/invite_cp.md)（`cp/`） | 機能R（友達招待・SC-12）の画面・帰属・報酬率・振込の詳細。PRD §5.9 と要件06 SC-12 から参照する | 招待の条件・報酬・画面が変わる |
 
 ### 要件詳細（`requirements/`）
 
 | 文書 | 担当範囲 |
 |---|---|
 | [01 システム構成](./requirements/01_system_architecture.md) | 技術スタック、環境変数、認証・proxy、監視、ログ保持 |
-| [02 データモデル](./requirements/02_data_model.md) | 全26テーブルの列・制約・保持期間、jsonbの形 |
+| [02 データモデル](./requirements/02_data_model.md) | 全テーブルの列・制約・保持期間、jsonbの形（テーブルの数は同文書 §3 の見出しが正） |
 | [03 認証・課金・利用量](./requirements/03_auth_billing_usage.md) | 登録・ログイン、Stripe、プラン、利用枠、実行ガード |
 | [04 ジョブと自動化](./requirements/04_jobs_and_automation.md) | 定時トリガー、ジョブキュー、アプリ内通知、cleanup |
 | [05 API・Server Actions](./requirements/05_api_server_actions.md) | 入出力の形、エラーコード、認可、楽観lock |
-| [06 画面](./requirements/06_screens_onboarding_posting.md) | SC-01〜11の画面仕様、App Shell、文言の方針 |
+| [06 画面](./requirements/06_screens_onboarding_posting.md) | SC-01〜12（＋SC-01b 旧LP）の画面仕様、App Shell、文言の方針 |
 
 ### 運用メモ（`operations/`）
 
@@ -35,8 +37,8 @@
 | [開発とテストの進め方](./operations/development-and-testing.md) | **実装前に読む。** テスト8層の役割と盲点、書き方の規約、固有の落とし穴 |
 | [動いているかの見張り方](./operations/monitoring.md) | 運用中。doctorの検査項目、Sentry、毎朝の運営者メール |
 | [ローカル開発](./operations/local-development.md) | 手元で起動・確認する |
-| [CI](./operations/ci.md) | GitHub Actionsが何を回すか |
-| [デプロイ手順](./operations/deployment.md) | staging / production へ出す |
+| [CI](./operations/ci.md) | GitHub Actionsが何を回すか（`[light ci]` による軽量化を含む） |
+| [デプロイ手順](./operations/deployment.md) | staging / production へ出す。実手順は `/release` スキルが自動化し、ここは環境・migration・ロールバックの根拠 |
 | [リリース前チェックリスト](./operations/release-checklist.md) | 公開前の確認と、人がやる準備 |
 | [招待報酬の銀行振込](./operations/affiliate-payouts.md) | 月1回の振込と支払記録（T-M8-174/176） |
 | [DBバックアップ・復元](./operations/database-backup-restore.md) | バックアップを取る・戻す |
@@ -49,6 +51,7 @@
 | [ADR](./decisions/README.md) | 上記で表現しきれない技術判断。不可逆な選択をしたとき |
 | [marketing/](./marketing/) | **正本ではない。** LP等の外部制作へ渡す依頼文（作成時点のスナップショット） |
 | [`blog/`](../blog/README.md)（リポジトリ直下） | 公開ブログの記事（Markdown）。書き方・front matter・投稿の流れは同ディレクトリの README が正本。画面仕様は要件06 |
+| [`kit/`](../kit/README.md)（リポジトリ直下） | **仕様の正本ではない。** 配布用のClaude Code開発キット（プラグイン `docdd`）の元ファイル（README・VERSION・雛形・プラグイン専用スキル・`BUILD.json`）。`npm run dev-kit` が `dist/docdd/` を生成する。作り方・配り方は [`kit/PUBLISHING.md`](../kit/PUBLISHING.md) |
 
 ## 2. 仕様の所有ルール（どこに書くか）
 
@@ -78,7 +81,8 @@
 | `route-auth.test.ts` | 開発とテストの進め方の記述 ↔ cron routeの認可 | `npm test` |
 | `legal-pages.test.ts` | 法務3ページ ↔ 委託先・Cookie・事業者情報の定数 | `npm test` |
 | `npm run check:csp-nonce` | ビルド成果物のHTML ↔ nonce付きCSPの前提 | `release:check` |
-| `blog-articles.test.ts`／`npm run blog:check` | `blog/*.md` の front matter・画像（本文と `image`）の実在・太字にならない `**` ↔ 画面と同じ判定（`blog-content.ts`）。不備は公開側に出ないだけなので、ここで止める | `npm test`／運営者が投稿前に実行 |
+| `blog-articles.test.ts`／`npm run blog:check` | `blog/published/*.md`・`blog/drafts/*.md` の front matter・画像（本文と `image`）の実在・太字にならない `**`・置き場所と `draft` フラグの食い違い ↔ 画面と同じ判定（`blog-content.ts`）。不備は公開側に出ないだけなので、ここで止める | `npm test`／運営者が投稿前に実行 |
+| `dev-kit.test.ts`（`npm run dev-kit -- --check`） | `kit/BUILD.json` ↔ 正本（`.claude/skills/`・`kit/`・ルートの `.mcp.json`／許可設定／検査スクリプト）から作り直した配布物のハッシュと、元スキルのハッシュ。ずれていれば「`npm run dev-kit` を実行」で赤にする（公開側が古いまま誰も気付かないのを止める） | `npm test` |
 
 **新しく一覧や数値をdocsへ書くときは、突き合わせる検査も同時に作る。** 作れないなら「実測が正」と明記して日付を添える（例: テスト本数）。
 

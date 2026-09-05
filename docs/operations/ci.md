@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.7 |
-| 更新日 | 2026-09-05 |
+| バージョン | v1.8 |
+| 更新日 | 2026-09-06 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[リリース前チェックリスト](./release-checklist.md)／[デプロイ手順](./deployment.md)／[ローカル開発](./local-development.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md) |
 
 `.github/workflows/ci.yml`。リリース判定ゲート `npm run release:check` を push / PR ごとに機械的に実行する。ゲートが整っていても手元で実行し忘れれば意味が無いため、**実行そのものを強制すること**が目的。
@@ -20,16 +20,26 @@
 
 同一ブランチで新しい push があれば古い実行はキャンセルする（`concurrency`）。
 
-**些細な修正は CI を軽量化できる**（2026-09-05・T-M8-438）: HEAD のコミットメッセージ（空コミットの件名）に `[light ci]` があると、`release:check` ジョブは「同一内容の緑を探す」ステップで本体（DB・build・E2E）を飛ばし、型・lint だけで約2分で緑になる。stg → main のマージコミットでは、マージ元の印を見て同じく飛ばす。`/release` スキルが差分の対応表（docs・BACKLOG・ブログ・`.claude/**`・`kit/**` だけなら軽量化）で判断する。**GitHub 公式の `[skip ci]` 等は使わない**——workflow ごと止まり、branch protection の必須チェック2本が報告されず PR がマージできない（実際に起きた）。`npm run release:staging` はこの印を検出して止める。
+**些細な修正は CI を軽量化できる**（2026-09-05・T-M8-438）: HEAD のコミットメッセージ**全体（件名だけでなく本文も。`git log -1 --format=%B`）**に `[light ci]` があると、`release:check` ジョブは「同一内容の緑を探す」ステップ（§2）で本体（DB・build・E2E）を飛ばし、型・lint だけで約2分で緑になる。運用上はこの印を `/release` が作る**空コミットの件名にだけ**付け、本文には書かない（判定は本文も見るため、説明のつもりで書いた印が効いてしまう）。stg → main のマージコミットでは、**マージ元（`HEAD^2`）が存在し、かつ tree が HEAD と同一**のときに限り、マージ元の `[light ci]` またはマージ元の緑の `release:check` を見て同じく飛ばす（tree が違う＝真に新しい内容ならフルで走る）。`/release` スキルが差分の対応表（docs・BACKLOG・ブログ・`.claude/**`・`kit/**` だけなら軽量化）で判断する。**GitHub 公式の `[skip ci]` 等（5種）は使わない**——workflow ごと止まり、branch protection の必須チェック2本が報告されず PR がマージできない（実際に起きた）。`npm run release:staging` はこの印を検出して止める（§5）。
 
 ## 2. 何を実行するか
 
 | job | 内容 | 目的 |
 |---|---|---|
 | `static` | `npm ci` → `typecheck` → `lint` | 数十秒で返る検査を先に落とす（`verify` の完了を待たない） |
-| `verify` | `supabase start` → `.env.local` 生成 → service_role 権限テスト → Playwright ブラウザ取得 → **`npm run release:check`** | 手元と同一のゲートを丸ごと実行 |
+| `verify` | **同一内容の緑を探す**（下記） → `supabase start` → `.env.local` 生成 → service_role 権限テスト → Playwright ブラウザ取得 → **`npm run release:check`** | 手元と同一のゲートを丸ごと実行 |
 
 `verify` は `release:check` を分解せず**そのまま呼ぶ**。CI側に手順を書き写すと、`release:check` へステップを追加してもCIに反映されず穴が開くため。`static` の内容は `release:check` にも含まれるので、`static` を消しても検査範囲は狭まらない（速度のためだけに分けている）。
+
+**「同一内容の緑を探す」ステップ**（`verify` の先頭・T-M8-376）: 次のどれかに当たれば以降のステップ（`npm ci` から `release:check` まで）をすべて飛ばし、job は緑で終わる。
+
+| 条件 | 意味 |
+|---|---|
+| HEAD のメッセージ（本文含む）に `[light ci]` | 運営者が「些細な修正」と判断した push（§1） |
+| マージコミット（`HEAD^2` あり）で HEAD と `HEAD^2` の tree が同一、かつ `HEAD^2` のメッセージに `[light ci]` | 軽量化した stg のコミットを main へマージした |
+| 同じく tree が同一、かつ `HEAD^2` に成功済みの `release:check（DB・build・E2E）` check run がある（`gh api …/check-runs` で探す） | stg で検証済みの内容をそのまま main へマージした。同じ tree を再検証しても結果は変わらない |
+
+あわせて **stg → main の pull_request イベントでは `static`・`verify` とも走らない**（`if: github.event_name != 'pull_request' \|\| github.head_ref != 'stg'`）。必須チェックはコミット単位で判定されるので、stg へ push したときの結果が PR にも効く（skipped は必須チェック上は成功扱い）。この2つが無かった頃は1リリースで同一内容のフル CI を3回（stg push → PR → main push・約40分）回していた。
 
 `supabase start` は migration と seed をクリーン適用するので、**migration自体の適用可否もCIで毎回検証される**。`service_role` の権限テスト（`src/lib/db/service-role-grants.db.test.ts`）だけは `release:check` より前に単独で実行する。ここが落ちると以降のDBテストが総崩れして原因が読みづらくなるため。
 
@@ -68,5 +78,7 @@ GitHub Secrets は使わない。テストは外部API（Stripe / X / AI各社 /
 | service_role 権限テストが失敗 | migration `20260726000002_grant_service_role.sql` が適用されていない／新規テーブルに権限が付いていない |
 | E2Eが timeout | CIの2コアランナーでは各routeの初回コンパイルに数十秒かかる。`playwright.config.ts` は `process.env.CI` で待ち時間を広げている（test 150s／expect 30s／webServer 240s）。それでも足りない場合は待ち時間ではなく遅い原因を見る |
 | E2Eが assertion で失敗 | `playwright-artifacts`（失敗時のみ7日保存）の trace・screenshot を取得する |
+| **CI の run 自体が無い**（`gh run list` に HEAD が出ない。`release:staging` が「コミットに GitHub 公式の省略の印（skip ci 等）があり、CI が走っていません」で止まる） | HEAD のコミットメッセージ（**本文も含む全体**）に GitHub 公式の印（`[skip ci]`・`[ci skip]`・`[no ci]`・`[skip actions]`・`[actions skip]`）が入っている。2026-09-05、本文で**説明として書いただけ**で必要な CI が走らなかった。印を外したコミットを積んで push し直す（コミットの書き換えはしない）。些細な修正なら `[light ci]` を空コミットの件名に付ける。検出は `src/lib/ops/release-gate.ts` の `CI_SKIP_MARKER_RE` |
+| `typecheck` が `*.png` の import（`Cannot find module '…png'`）で落ちる。手元は緑 | 生成物の next-env.d.ts（`next dev`／`next build` が作る。gitignore 済みでリポジトリには無い）は CI の checkout に存在しない。静的画像 import の型は `src/types/next-image.d.ts`（`next/image-types/global` への参照）が担うので**消さない**。手元はビルド済みで next-env.d.ts があるため気付けない（T-M8-433・2026-09-05） |
 
 retry は 0 のまま（CIでも）。flaky を無条件 retry で隠すと、テストが「動いているつもり」になるため。

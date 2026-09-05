@@ -60,8 +60,10 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 欠けても起動し、画面は全部正常に見える）。T-M8-147 で `doctor` の項目に入れた。
 
 - **`main` への直pushは branch protection で拒否される**（PR必須・必須チェック2本）。
-  `stg` → `main` のPRは使えない（D-28: ツリー同一でSHA分岐）ので、
-  **`main` から作業ブランチを切ってPR**にする。手順は [デプロイ手順 §0](../docs/operations/deployment.md)。
+  反映は **`stg` → `main` の PR**（2026-08-22 以降・PR #45 以降はすべてこの形。D-28 の SHA 分岐は
+  同日に解消済み＝解決済み）。手順は `/release` スキル（`.claude/skills/release/SKILL.md`）と
+  [デプロイ手順 §0](../docs/operations/deployment.md)。
+  （経緯: 2026-08-17〜22 は D-28 のため `main` から作業ブランチを切って PR していた）
 
 **2026-08-17: 1回目の本番反映を完了した。** migration 5件を適用し、**18日間止まっていた定時実行が動き出した**
 （`doctor` で「0分前に動いています」・ニュース48時間で20件）。実物スモーク成功（$0.19）。
@@ -123,7 +125,7 @@ PR #7（`stg` → `main`）で全機能・法務3ページ・改称（Exos AI）
 - **装飾のためにJSへ依存させない**。LPの出現演出が原因で、JSが動かないと会員登録の唯一の入口が
   白紙になっていた（サーバーは200・テストも緑）。演出を廃止した（T-M8-76）
 
-**リポジトリの状態**: `main` = `origin/main`（本番と一致）。`stg` と `main` はツリー同一だがSHAが分岐（D-28）。
+**リポジトリの状態**: `main` = `origin/main`（本番と一致）。`stg` と `main` はツリー同一だがSHAが分岐（D-28。2026-08-22 に解消済み・以後は stg → main の PR）。
 `supabase link` は本番（`hvjizoahdqfvasiqzzkv`）へ向いている——**stgを触る前に張り替えること**。
 `npm run release:check` は緑（新設の `check:csp-nonce` を含む）。
 
@@ -6204,14 +6206,18 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - `/blog-write` に「title は読者のメリット＋注目のワード」「結論＝記事の要約」「読者目線で具体的・簡潔・構造的」の指針があり、旧版の規則・手順・しきい値（文字サイズ・字数・front matter のキー・2周レビュー・AIっぽさの項目）が1つも失われていない。行数は旧版より少ない
 - 実装メモ（2026-09-05 完了・運営者の指摘「図内の文言が分かりにくい」「結論が要約になっていない。深く考えて改善。簡潔に」「スキルにタイトルと読者目線の指針を。スキル自体も簡潔に」）: 図は分類札を外し、日付＋具体的な2行（制裁金額・利用者数・粗利率など本文の数字）にした。記事は結論を「主張→4ファイルの表→効く理由→入手方法」の要約に組み替え、「4つの道具」節を結論へ統合、前提・理由・落とし穴の重複を削って約12,000字→約10,500字（具体例は維持）。スキルは手順順（入力→掘る→構成→書く→保存・画像・検証→2周レビュー→ルール）に整理し、日付・作業IDの経緯注記を落として 114行→95行。旧版との突き合わせで失われた規則が無いことを別エージェントで確認。
 
-### T-M8-438: CI の有無を運営者が選べるようにする（些細な修正は `[skip ci]`、release ゲートは「省略」として通す） `done`
+### T-M8-438: CI の有無を運営者が選べるようにする（些細な修正は `[light ci]` で CI の本体を飛ばす。GitHub 公式の `[skip ci]` は release ゲートが検出して止める） `done`
 - 参照: docs/operations/ci.md §1・docs/operations/deployment.md §ゲート4・CLAUDE.md §2「いつ回すか」 / 依存: なし / サイズ: S
-- 完了条件:
-  - コミットメッセージに `[skip ci]` があると、その push と PR で CI が走らない（GitHub 公式の印。`[ci skip]` `[no ci]` `[skip actions]` `[actions skip]` も同じ）
-  - `npm run release:staging` は、HEAD に印があり CI 結果が無いとき「自動テスト（CI）: 省略しました」として通す。印があっても CI が赤なら止まり、印が無く結果も無ければ従来どおり止まる（`release-gate.test.ts`）
-  - stg → main のマージコミットでは、`release:check` ジョブがマージ元の印を見て本体をスキップする（型・lint だけ走る）
-  - CLAUDE.md に「push は作業の最後に1回」「CI の有無は運営者の指示で選ぶ。動作に影響する変更には付けない」が書かれている
-- 実装メモ（2026-09-05 完了・運営者の指示「時間がかかりすぎ。CI は最後に、かつ必要な時だけ」「些細な修正なら CI 無しを選びたい」）: 同日は push 4回で CI に56分（うち1回は BACKLOG のメモだけ）。CI トリガー自体は `release.mjs` が HEAD の CI 結論を見るので外さず、(1) push を1回に減らす運用、(2) 運営者が選ぶ `[skip ci]` の2段にした。印はコミットに残るので「誰が省略を選んだか」が履歴で分かる。実物確認: 3a310253 を `[skip ci]` 付きで push → CI 実行なし → `release:staging` が「省略しました」で CI 項目を通過。 → **同日に修正**: GitHub 公式の印は workflow ごと止めるため branch protection の必須チェックが報告されず PR #49 がマージできなかった。印を独自の `[light ci]`（CI は走るが本体を飛ばす）に変え、公式の印は release ゲートが検出して止める形にした。
+- 完了条件（最終形・2026-09-05 同日修正後）:
+  - HEAD のコミットメッセージ（件名だけでなく本文も含む全体）に `[light ci]` があると、CI は走るが `release:check` ジョブの本体（DB・build・E2E）を飛ばし、型検査・lint だけで約2分で緑になる（`.github/workflows/ci.yml`「同一内容の緑を探す」ステップ）。運用上は `/release` が作る空コミットの件名にだけ付ける
+  - stg → main のマージコミットでは、マージ元（`HEAD^2`）と tree が同一のときに限り、マージ元の `[light ci]`（または同一 tree の緑）を見て同じく本体を飛ばす。tree が違えばフルで走る
+  - `npm run release:staging` は、HEAD に GitHub 公式の省略の印（`[skip ci]` `[ci skip]` `[no ci]` `[skip actions]` `[actions skip]`）があり CI 結果が無いとき**止まり**、`[light ci]` へ誘導する（`src/lib/ops/release-gate.ts` の `CI_SKIP_MARKER_RE`・`release-gate.test.ts`）。印があっても CI が走って赤なら止まり、印が無く結果も無ければ従来どおり止まる
+  - CLAUDE.md に「push は作業の最後に1回」「CI の要否は `/release` が差分の対応表で決める。GitHub 公式の `[skip ci]` は使わない。本文で言及するときも角括弧を外す」が書かれている
+  - （旧・同日に置き換え）当初の完了条件は「コミットメッセージに `[skip ci]`（GitHub 公式の印）があると CI が走らず、`release:staging` は『自動テスト（CI）: 省略しました』として通す」だった。下の経緯のとおり同日に上の形へ改めた
+- 実装メモ（2026-09-05 完了・運営者の指示「時間がかかりすぎ。CI は最後に、かつ必要な時だけ」「些細な修正なら CI 無しを選びたい」）: 同日は push 4回で CI に56分（うち1回は BACKLOG のメモだけ）。CI トリガー自体は `release.mjs` が HEAD の CI 結論を見るので外さず、(1) push を1回に減らす運用、(2) 運営者が選ぶ印の2段にした。印はコミットに残るので「誰が軽量化を選んだか」が履歴で分かる。
+  - **1回目の形（3a310253）**: GitHub 公式の `[skip ci]` を使い、release ゲートは「省略しました」として通す。実物確認: `[skip ci]` 付きで push → CI 実行なし → `release:staging` が CI 項目を通過。
+  - → **同日に修正（894980f3）**: 公式の印は workflow ごと止めるため branch protection の必須チェック2本が報告されず、PR #49 が「2 of 2 required status checks are expected」でマージできなかった。印を独自の `[light ci]`（CI は走るが本体だけ飛ばす）に変え、公式の印は release ゲートが検出して止める形にした（ci.md v1.7・deployment.md v1.23・CLAUDE.md・`/release`・配布版 `kit/skills/release` を同じ内容に。配布キットは v0.1.3 へ上げて公開リポジトリへ push 済み）。修正後に PR #49 はマージできた。
+  - **副次の落とし穴（9d218731）**: 本文に説明として角括弧付きの skip ci を書いただけで CI が止まる（2e8cd64f で実際に起きた。GitHub は本文も見る）。ci.md §5 と CLAUDE.md の規約に記録。
 
 ### T-M8-439: 画像プロンプト（PT-IMG）の「前提」「タスク」を運営者の文面へ `done`
 - 参照: プロンプト設計書 §6.8 / 依存: なし / サイズ: S
@@ -6220,8 +6226,9 @@ UI側boolean を壊しても投稿は誤爆しない）。
 
 ### T-M8-440: `/release` スキル（CI の要否を差分の対応表で判断し、push 1回で staging → 本番まで） `done`
 - 参照: .claude/skills/release/SKILL.md・CLAUDE.md §2・docs/operations/deployment.md / 依存: T-M8-438 / サイズ: S
-- 完了条件: `/release` が、前提確認 → CI 要否の判定（対応表。不要なら空コミットで `[skip ci]`）→ push 1回 → CI 待ち → `release:staging` → PR → Vercel 待ち → `release:production` → link 戻し → 実ブラウザ確認 → 報告、の順を定めている。CLAUDE.md のスキルの地図と流れに `/release` があり、配布キットには含まれない（EXCLUDED_SKILLS）
-- 実装メモ（2026-09-05 完了・運営者の依頼「CI の有無を Claude が判断できるように。反映手順のスキルがあればそこに」）: 反映専用のスキルは無かった（deployment.md の手順書と dev-loop の外で毎回手で組み立てていた）ので新設。deployment.md の「stg → main の PR は使えない（D-28）」は 2026-08-22 以降の実態と違っていたため、現在の流れを追記した。
+- 完了条件（最終形・2026-09-05 同日修正後）: `/release` が、前提確認 → CI 要否の判定（差分の対応表。不要なら空コミットの件名に `[light ci]`。GitHub 公式の `[skip ci]` は使わない）→ push 1回 → CI 待ち（必要なら約14分・軽量化でも約2分は待つ）→ `release:staging` → stg → main の PR → Vercel 待ち → `release:production` → link 戻し → 実ブラウザ確認 → 報告、の順を定めている。CLAUDE.md のスキルの地図と流れに `/release` がある。**配布キットにも含める**（汎用化した派生 `kit/skills/release/SKILL.md`＝T-M8-443。`EXCLUDED_SKILLS` は blog-write・blog-publish のみ）
+  - （旧・同日に置き換え）当初は「不要なら空コミットで `[skip ci]`」「配布キットには含まれない（EXCLUDED_SKILLS）」だった。印は T-M8-438 の同日修正で `[light ci]` へ、配布は運営者の依頼で T-M8-443 に含める形へ改めた
+- 実装メモ（2026-09-05 完了・運営者の依頼「CI の有無を Claude が判断できるように。反映手順のスキルがあればそこに」）: 反映専用のスキルは無かった（deployment.md の手順書と dev-loop の外で毎回手で組み立てていた）ので新設。deployment.md の「stg → main の PR は使えない（D-28）」は 2026-08-22 以降の実態と違っていたため、現在の流れ（stg → main の PR）を正の手順に書き、旧ブロックは経緯へ下げた。 → **同日に修正（894980f3）**: 印を `[skip ci]` から `[light ci]` へ（理由は T-M8-438）。CI 待ちの手順も「軽量化でも CI は走るので完了を待つ（約2分）」に改めた。配布版は T-M8-443 で追加。
 
 ### T-M8-441: Web検索方針の docs とコードの齟齬（4件）を正す `todo`
 - 参照: プロンプト設計書 §5.2・§7.5（:252）・要件06 §（自作パターン :307）・ADR-0008・src/lib/post/pattern-spec.ts / 依存: D-57 / サイズ: S
@@ -6246,8 +6253,9 @@ UI側boolean を壊しても投稿は誤爆しない）。
 - 参照: kit/skills/release/SKILL.md・kit/templates/CLAUDE.template.md「反映コマンド」表・kit/README.md・blog/published/claude-code-non-engineer-workflow.md / 依存: T-M8-440 / サイズ: S
 - 完了条件:
   - 配布用スキル `kit/skills/release/SKILL.md` が、本リポジトリの `/release` と同じ順（前提 → CI 要否の対応表 → push 1回 → CI 待ち → staging → 本番ブランチへ取り込み → 本番 → 実ブラウザ確認 → 報告）で、固有名（Vercel・Supabase の ref・release スクリプト名・GitHub のリポジトリ名）を含まない。反映先のコマンドは雛形 CLAUDE.md の「反映コマンド」表（staging へ反映／本番へ反映／公開先 URL。`init` のヒアリングで埋まる）を指す
-  - `npm run dev-kit` がスキル12本＋init を生成し（`release` を除外しない）、公開リポジトリが v0.1.2 になる。README・記事のスキル数と一覧に `release` がある
-- 実装メモ（2026-09-05 完了・運営者の依頼「release のスキルもプラグインやブログの説明に追加できますか」）: 汎用化は他の11本と同じ手順（書く → 原文と突き合わせて反証 → 直す）。GitHub Actions 固有の部分（PR・skip ci の印）は「GitHub を使っていれば」の条件付きで残した。CI 不要の変更（`.claude/**`・`kit/**`・ブログ・docs）なので、`/release` の対応表どおり空コミットで印を付けて反映（本番反映の初回の CI 省略ケース）。
+  - `npm run dev-kit` がスキル12本＋init を生成し（`release` を除外しない）、公開リポジトリが **v0.1.3** になる（最終形。v0.1.2 で公開した直後、同日の `[light ci]` への修正で 0.1.3 へ上げ直した）。README・記事のスキル数と一覧に `release` がある
+  - 配布版 `kit/skills/release/SKILL.md` は、軽量化の印（例 `[light ci]`）が「利用者の CI に『印があれば本体を飛ばす』仕組みがあるときだけ効く。無ければ印を付けずに CI を回す」こと、GitHub 公式の省略の印（角括弧付きの skip ci 等）は使わないことを明記している
+- 実装メモ（2026-09-05 完了・運営者の依頼「release のスキルもプラグインやブログの説明に追加できますか」）: 汎用化は他の11本と同じ手順（書く → 原文と突き合わせて反証 → 直す）。GitHub Actions 固有の部分（PR・CI 軽量化の印）は「GitHub を使っていれば」の条件付きで残した。CI 不要の変更（`.claude/**`・`kit/**`・ブログ・docs）なので、`/release` の対応表どおり空コミット（4581c5fb）で印を付けて反映した（本番反映の初回の CI 軽量化ケース）。 → **同日に修正（894980f3）**: このとき使った印が GitHub 公式の `[skip ci]` だったため PR #49（v0.1.2）がマージできず、T-M8-438 の修正（`[light ci]`・release ゲートが公式の印を止める）を配布版の release スキルにも反映して **v0.1.3** として再生成・公開リポジトリへ push（`release: docdd v0.1.3`）。PR #49 は修正後にマージ済み。
 
 
 ### T-M8-444: パターン「ノウハウ・ハウツー」の本文から内部の封筒名 `<pattern_rules>` を外す `done`
@@ -6263,6 +6271,15 @@ UI側boolean を壊しても投稿は誤爆しない）。
   - 単体（env-schema・navigation-items）と E2E（invite-access は LP 入口の1本だけ skip、直URLの3本は緑）が通る
 - 実装メモ（2026-09-05 完了・運営者の指示「一旦隠す。今後復活させるので戻しやすく」）: 既存の `FEATURE_QUOTE_POST_ENABLED` と同じ形（`parseBooleanFlag`・未設定＝false・必須リストに入れない）。純粋な lib（`subscription-access.ts`）とロック画面は `server-only` の `env` を組めないので `src/lib/invite/entry-visibility.ts` が `process.env` を直接読む。サイドバーは `appNavigationItems({ inviteEnabled })` で落とし、定義（`APP_NAVIGATION_ITEMS`）は残す。E2E 18本緑・1本 skip。
 
+
+### T-M8-446: 2026-09-04〜05 の変更を docs へ同期（監査で見つかった未同期17件・数値の乖離25件） `done`
+- 参照: docs/README.md（ドキュメントマップ・§3 数字より正本参照の方針）・CLAUDE.md「最重要ルール：ドキュメントとコードの同期」・監査対象 T-M8-420〜445／D-53〜57 の実装（`src/app/plans/page.tsx`・`src/components/billing/plan-picker-recommend-first.tsx`・`src/lib/analytics/page-view.ts`・`src/app/admin/actions.ts`・`src/app/blog/[slug]/page.tsx`・`scripts/dev-kit.mjs`・`.github/workflows/ci.yml`・`src/lib/ops/release-gate.ts`・`src/lib/post/pattern-spec.ts`・`src/lib/invite/entry-visibility.ts`・migration `20260905000002`） / 依存: T-M8-445 / サイズ: M
+- 完了条件:
+  - 未同期（b）17件がすべて正本に反映されている。主なもの: `/plans` の「見出し下の1文」「÷30日」「カード直下の注意ブロック」など**削除済みの文言を指す記述**（要件06 §1.1）／記事ページの既定 og:image は明示的に置く（要件06 §1.5・コードと逆だった）／`signUp` の hidden `signup_source` と `createTrafficSource`（要件05）／`EXCLUDED_SKILLS` と新スキル追加時の停止規則・`init` の「反映コマンド」表（kit）／`/release` は push・PR・マージまで行う・D-14 は解決済み（development-and-testing.md）／配布版 release スキルの CI 待ちと「印が効く前提」／PT-IMG の「英語」の縛り撤去と出典URLの選び方（プロンプト設計書）／招待導線はフラグ `FEATURE_INVITE_ENABLED` 配下（要件03・要件06・deployment.md の復活手順）
+  - 数値・一覧の乖離（c）25件が実数か正本への参照に直っている。主なもの: DB テーブル数（26／28／21 と食い違い → 実数 31 か要件02 §3 参照）・定時トリガー（5本 → 4本）・画面ID（SC-01〜11 → SC-01〜12＋SC-01b）・ルーティング表と画面一覧（`/old`・`/admin`・SC-12 等の欠落）・`TRIAL_NOTE` の置き場所（2箇所 → 3箇所）・閲覧記録の除外規則（`sec-fetch-mode: navigate` も条件）・配布スキル本数（11 → 12）・プラグイン版数（v0.1.2 → v0.1.3）・`blog:check` `blog:diagram` の検査内容・ci.md／deployment.md／CLAUDE.md の `[light ci]` 前後の記述・E2E 件数・パターン別 Web 検索方針の一覧表・env 表の欠落（`NEWS_TEXT_MODEL`・`STRIPE_RETENTION_COUPON_ID`）
+  - このファイル（BACKLOG）の T-M8-438／440／443 と冒頭の D-28 が最終形（`[light ci]`・公式印は release ゲートが止める・release は配布に含む・v0.1.3・stg → main の PR）になり、旧文は「同日に修正」の経緯として残っている
+  - 触った docs のヘッダ（バージョン＋1・更新日 2026-09-06）と変更履歴が更新され、`npm run check:doc-dates && npm run check:doc-refs` が緑。`docs/cp/invite_cp.md` にもヘッダが付き、docs/README のマップに `cp/` と `kit/` がある
+- 実装メモ（2026-09-06 完了・`/doc-sync --full` 相当の監査 → ファイル担当を分けて反映）: 2日で26タスク（T-M8-420〜445）を進め、LP・料金の文言は同日に何度も変わり（T-M8-421→425→428→430→431）、CI の印も同日に `[skip ci]` → `[light ci]` へ変わったため、**各タスクの docs 同期が「その時点の形」で止まり、後の変更が前の記述を上書きし損ねた**のが乖離の主因。削除の指示を「（…は削除）」と本文に注記して済ませた箇所（要件06 §1.1 L52）は文が壊れていた——**削除は記述ごと消し、経緯は変更履歴に書く**。数字の一覧（テーブル数・画面数・スキル本数）は複数の docs が別々の値を持っていたので、docs/README §3 の方針どおり正本（要件02 §3・要件06 §1・`kit/README.md`）への参照へ寄せた。監査で見つかった**コード側**の古い記述（`campaign-callout.tsx`・`plan-picker-recommend-first.tsx`・`image.ts`・`pattern-spec.ts:171-172` のコメント、`pattern-spec.test.ts` の fixture）は docs ではなくコードの修正なので、実装の変更を伴う T-M8-441（出典URLの選び方・予約スロットの `source_url`）と合わせて扱う。運営者判断待ち（T-M8-444 の他パターンの生タグ言い換え）は据え置き。
 
 ### T-M8-410: 参考アカウントの反映の失敗が画面に出ない（成功扱い・古い「開始が遅れています」・通知文言が削除用） `done`
 - 参照: 要件06 §3.1（反映の進行表示） / 要件04 §14（通知の文言） / 依存: なし / サイズ: S

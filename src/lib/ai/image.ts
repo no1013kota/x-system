@@ -15,7 +15,10 @@ import type { ImageProvider } from "./resolve-provider";
 export type AspectRatio = "16:9" | "1:1" | "9:16";
 
 export interface ImageGenRequest {
-  /** 英語プロンプト（PT-IMG でテキストモデルが生成したもの, §5.5）。 */
+  /**
+   * 画像の生成指示（PT-IMG でテキストモデルが生成したもの, §5.5）。言語は指定しない。
+   * 画像内に描く文字は日本語（運営者の指示 2026-08-26・T-M8-315）。
+   */
   prompt: string;
   aspectRatio: AspectRatio;
   /** この1回の provider call の timeout ms（呼び出し側が deadline から算出, §5.6）。 */
