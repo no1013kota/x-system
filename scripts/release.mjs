@@ -33,7 +33,7 @@ function sh(cmd, { allowFail = false } = {}) {
   本番の呼び出し元が1つも無かった（テストが実経路を守っていなかった）。
 */
 const { evaluateReleaseGate, expectedBranchFor, firstStop, onlyMigrationsPending,
-        parseAppliedRemote, pickCiConclusion, projectRefFromCsp, summarizeGate } =
+        isCiSkipRequested, parseAppliedRemote, pickCiConclusion, projectRefFromCsp, summarizeGate } =
   await import("../src/lib/ops/release-gate.ts").catch(async () => {
   // TypeScript を直接 import できない実行環境向けのフォールバック（tsx等が無い場合）。
   console.error("release: 判定モジュールを読み込めませんでした。`npx tsx scripts/release.mjs` で実行してください。");
@@ -167,6 +167,7 @@ const steps = evaluateReleaseGate({
   dirty,
   unpushed,
   ciConclusion: ciConclusion(),
+  ciSkipRequested: isCiSkipRequested(sh("git log -1 --format=%B", { allowFail: true })),
   deployConclusion: deployConclusion(),
   unappliedMigrations: unapplied,
   baseUrl,

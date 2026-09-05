@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.20 |
-| 更新日 | 2026-09-01 |
+| バージョン | v1.22 |
+| 更新日 | 2026-09-05 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[CI](./ci.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md)／[リリース前チェックリスト](./release-checklist.md)／[launchd→Vercel Cron](./launchd-to-vercel-cron.md)／[DBバックアップ](./database-backup-restore.md)／[ローカル開発](./local-development.md) |
 
 Vercel（Next.js）＋ Supabase（Postgres/Auth/Storage）構成のデプロイ手順。**staging = Vercel の preview 環境（`APP_ENV=preview`）**、production = 同 production 環境（`APP_ENV=production`）とする。
@@ -36,7 +36,7 @@ npm run release:production   # main → production
 1. ブランチが期待どおりか（staging=`stg` / production=`main`）
 2. 未コミットの変更が無いか
 3. 未pushのコミットが無いか（反映されるのはリモートの内容）
-4. 自動テスト（CI）が緑か（赤・実行中・結果なしは止まる）
+4. 自動テスト（CI）が緑か（赤・実行中・結果なしは止まる。**コミットに `[skip ci]` があり結果が無いときは「省略」として通す**——運営者が些細な修正と判断した場合の選択。[CI](./ci.md) §1）
 4.5 **デプロイ（Vercel）のbuildが成功しているか**（失敗・build中は止まる。`gh` が無い環境では判定を飛ばす）——**CIが緑でもbuildは落ちる**。CIとVercelでは環境変数が別物で、2026-08-29 に `OPENAI_IMAGE_MODEL` がVercelに無いためbuildが3回連続で失敗していたのに、この判定が無く「✅ 反映と検証が完了しました」と出ていた（**古い版が動いたまま成功に見える**・T-M8-370）
 5. 反映先のURLが分かるか（`-- --base https://<URL>` で渡すか、`.env.local` の `STAGING_BASE_URL` / `PRODUCTION_BASE_URL`）
 6. **未適用のmigrationが無いか** — あれば止まる。`-- --apply` を付けて実行すると `supabase db push` まで行い、適用後にもう一度確認を通す
@@ -87,7 +87,9 @@ npm run release:check    # typecheck → lint → check:doc-dates → check:doc-
 
 同じゲートは push / PR で GitHub Actions も実行する（[CI](./ci.md)）。
 
-**リリースの流れ（要決定D-8 案A・2026-07-30）**
+**リリースの流れ（要決定D-8 案A・2026-07-30。2026-09-05 以降の実手順は `/release` スキル＝`.claude/skills/release/SKILL.md` が正）**
+
+> **現在の流れ（2026-08-22 に stg の旧履歴を main の祖先へ取り込んで以降）**: `stg` へ push → CI（差分により省略可・[CI](./ci.md) §1）→ `npm run release:staging -- --apply` → **`stg` → `main` の PR**（`gh pr create --base main --head stg`）→ マージ → Vercel の build 完了を待つ → `npx supabase link --project-ref hvjizoahdqfvasiqzzkv` → `npm run release:production -- --apply` → staging へ link を戻す。下の D-28 の注記は当時の分岐状態の記録で、いまは `stg` → `main` の PR が使える（PR #45・#46 で実施）。
 
 **`main` への直pushは branch protection で拒否される**（実測 2026-08-18: `GH006 Protected branch update failed`・
 「Changes must be made through a pull request」「2 of 2 required status checks are expected」）。

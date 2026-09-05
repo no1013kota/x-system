@@ -2,8 +2,8 @@
 
 | 項目 | 内容 |
 |---|---|
-| バージョン | v1.5 |
-| 更新日 | 2026-08-20 |
+| バージョン | v1.6 |
+| 更新日 | 2026-09-05 |
 | 関連 | [開発とテストの進め方](./development-and-testing.md)／[リリース前チェックリスト](./release-checklist.md)／[デプロイ手順](./deployment.md)／[ローカル開発](./local-development.md)／[システム構成 §3 環境変数](../requirements/01_system_architecture.md) |
 
 `.github/workflows/ci.yml`。リリース判定ゲート `npm run release:check` を push / PR ごとに機械的に実行する。ゲートが整っていても手元で実行し忘れれば意味が無いため、**実行そのものを強制すること**が目的。
@@ -19,6 +19,8 @@
 | workflow_dispatch | 手動実行 |
 
 同一ブランチで新しい push があれば古い実行はキャンセルする（`concurrency`）。
+
+**運営者が省略を選べる**（2026-09-05）: コミットメッセージに `[skip ci]`（GitHub 公式の印。`[ci skip]` `[no ci]` `[skip actions]` `[actions skip]` も同じ）があると、その push と PR では CI が走らない。些細な修正（文言・docs・設定値など動作に影響しない変更）向けで、`npm run release:staging` は HEAD にこの印があれば「自動テスト（CI）: 省略しました」として通す（印が無く結果も無ければ従来どおり止まる）。stg → main のマージコミットでは、`release:check` ジョブの「同一内容の緑を探す」ステップがマージ元の印を見て本体をスキップする（型・lint だけ走る）。動作に影響する変更には付けない。
 
 ## 2. 何を実行するか
 

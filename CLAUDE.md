@@ -54,8 +54,9 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | `/blog-write` | ブログ記事を書く（テーマか参考URLを渡す） | `blog/` に下書き（`draft: true`）＋ `blog:check` 緑 |
 | `/blog-publish` | 下書き記事を公開する | draft解除・日付更新・記事ファイルだけのコミット |
 | `/playwright-cli` | ブラウザ操作の道具箱（他スキルから参照） | — |
+| `/release` | 依頼を全部終えたあと、staging → 本番へ反映する（CI の要否を差分から判断・push は1回） | PR・本番反映・実ブラウザ確認・CI 要否の理由 |
 
-**流れ**: 要望 → `/add-task` → `/dev-loop`（中で `/doc-sync` と検証スキルを呼ぶ）→ コミット。
+**流れ**: 要望 → `/add-task` → `/dev-loop`（中で `/doc-sync` と検証スキルを呼ぶ）→ コミット → 依頼が全部終わったら `/release`。
 連続自動開発は `/loop /dev-loop`。
 
 ## 仕様の読み方（実装時に必ず該当セクションを参照）
@@ -113,6 +114,14 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 | コミット前 | ＋ `npm run check:doc-dates && npm run check:doc-refs` | ＋5秒 |
 | **push前（まとめて1回）** | ＋ `npm run build && npm run check:csp-nonce && npm run test:e2e` | 約10分 |
 
+**push は作業のまとまりの最後に1回だけ**（運営者の指示 2026-09-05）。途中のタスクはローカルにコミットだけ積み、
+運営者から受けた依頼を全部終えて release する直前に push する。CI は push ごとに約14分走るため、
+途中で push すると CI の回数がそのまま待ち時間になる（同日、4回の push で CI に56分かかった。うち1回は
+BACKLOG のメモだけの push）。docs・BACKLOG だけの変更も単独で push せず、次の push に載せる。
+`release:staging` は HEAD の CI 結論を見るので、push トリガー自体は外さない。
+
+**CI の要否は `/release` が差分の対応表で決める**（`src/**`・`supabase/**`・`e2e/**`・依存・設定・CI 定義に触れば必要、docs・BACKLOG・ブログ・`.claude/**`・`kit/**` だけなら不要）。不要なら空コミットで `[skip ci]` を HEAD に付け、CI は走らず `release:staging` は「自動テスト（CI）: 省略しました」と表示して進む（main へのマージでも CI はその印を見て本体を飛ばす）。運営者の「CI なしで／ありで」は表より優先するが、動作に影響する変更で「なし」と言われたら理由を添えて CI を回す。
+
 **ただし上の表の該当行が「その変更に固有の検証」を指しているときは、段を待たずにその場で回す**
 （AI provider の `smoke:live`、外部サービス設定の `check:turnstile`、cronの実叩き、
 レンダリングモード・CSPに触ったときの `build` ＋ `check:csp-nonce`）。
@@ -141,6 +150,7 @@ X自動投稿Webアプリ「Exos AI」の開発リポジトリ。仕様の正本
 - **落ちた回数ではなく落ちる条件を探す。** 「5〜6回に1回落ちる」は溜まったデータ件数で決まる
   決定的な失敗だった（T-M8-161。詳細は[開発とテストの進め方](docs/operations/development-and-testing.md)
   §「なぜ「flaky」と即断してはいけないか」）。
+- **コミットメッセージの本文に角括弧付きの「skip ci」を文字どおり書くな。** GitHub は本文も見て CI を省略する（2026-09-05、印について説明した本文が原因で必要な CI が走らなかった）。印に言及するときは角括弧を外す。
 - **失敗を注入して確かめたら、必ず元へ戻す。** 注入した行・一時specの削除まで含めて1つの作業とする
   （`$TMPDIR` はsandboxの有無で変わるのでバックアップ先に使わない）。
 
