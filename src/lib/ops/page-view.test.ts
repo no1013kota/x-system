@@ -46,5 +46,11 @@ describe("ページ閲覧の記録（T-M8-378）", () => {
     expect(isCountableRequest({ ...browser, viewerEmail: "OP@example.com" })).toBe(false);
     expect(isCountableRequest({ ...browser, viewerEmail: "someone@example.com" })).toBe(true);
     expect(isCountableRequest({ ...browser, viewerEmail: "op@example.com", operatorEmail: null })).toBe(true);
+    // 追跡URL（?src=）付きは運営者自身でも数える（配ったURLの動作確認のため・T-M8-429）。
+    expect(isCountableRequest({ ...browser, viewerEmail: "op@example.com", source: "x_bio" })).toBe(true);
+    expect(isCountableRequest({ ...browser, viewerEmail: "op@example.com", source: "" })).toBe(false);
+    // 追跡URL付きでも bot・画面遷移でないものは数えない。
+    expect(isCountableRequest({ ...browser, userAgent: "Googlebot/2.1", source: "x_bio" })).toBe(false);
+    expect(isCountableRequest({ ...browser, secFetchDest: "empty", source: "x_bio" })).toBe(false);
   });
 });

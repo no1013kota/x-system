@@ -23,8 +23,8 @@ import { isCountableRequest, visitorHashFor, type TrackedPage } from "./page-vie
  * - Next.jsの先読み（`next-router-prefetch` ヘッダ）——リンクが画面に見えただけで飛ぶため
  *   「開いた」ではない。数えるとホームの数字が数倍に膨らむ
  * - bot（`page-view.ts` のUA判定）、画面遷移でないリクエスト（`sec-fetch-dest` が document 以外。
- *   release／doctor の疎通確認やスキャナ）、運営者自身（proxy が検証したメールが `SUPPORT_EMAIL`）
- *   ——T-M8-422
+ *   release／doctor の疎通確認やスキャナ）、運営者自身（proxy が検証したメールが `SUPPORT_EMAIL`。
+ *   ただし追跡URL `?src=` 付きは数える・T-M8-429）——T-M8-422
  */
 /**
  * @param options.source 流入元（`?src=`・T-M8-423）。`parseTrafficSource` 済みの値を渡す。
@@ -48,6 +48,7 @@ export async function recordPageView(
         secFetchMode: h.get("sec-fetch-mode"),
         viewerEmail,
         operatorEmail: env.SUPPORT_EMAIL ?? null,
+        source: options.source ?? "",
       })
     ) {
       return;
